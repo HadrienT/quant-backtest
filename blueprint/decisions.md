@@ -39,8 +39,28 @@ tableaux.
 est petit. Ce qui coûte, c'est la répétition : marche en avant avec
 ré-optimisation sur une grille de paramètres, CPCV, PBO, bootstrap ; et la
 couverture en monde simulé, où une boucle Python autour d'appels au wheel de
-pricing serait le goulot. **C'est un ordre de grandeur, pas une mesure** : le
-lot B2 livre un benchmark, et cette entrée sera complétée par ses chiffres.
+pricing serait le goulot. C'était un ordre de grandeur ; les chiffres du lot B2 sont ci-dessous.
+
+**Mesuré au lot B2** (11 octobre 2026, `scripts/bench.sh`, un cœur d'un Xeon
+E5-2680 v4, données simulées de 500 titres sur 6 552 jours, soit 26 ans).
+
+| Calcul | Temps |
+|---|---|
+| Un run, équipondéré rebalancé chaque mois, coût proportionnel | 81 ms |
+| Le même avec un coût d'écart estimé (table déjà calculée) | 70 ms |
+| Un run rebalancé chaque jour (3,3 millions d'ordres au journal) | 0,97 s |
+| Calcul vectorisé du rebalancement quotidien, sans livre ni coûts | 4,5 ms |
+| Contrôles de qualité des données, une fois par jeu de données | 236 ms |
+| Table des écarts estimés (Corwin-Schultz), une fois par jeu de données | 300 ms |
+
+Mille runs mensuels d'une grille de validation tiennent donc en moins d'une
+minute et demie sur un cœur. **Ce qui n'est pas mesuré** : l'équivalent en
+Python. L'ancien code n'a pas été repris et aucune boucle Python comparable
+n'a été écrite ; l'écart avec Python reste un ordre de grandeur supposé. Deux
+choses apprises en mesurant : les contrôles de qualité coûtent trois fois un
+run mensuel, d'où `data_already_checked` pour ne les faire qu'une fois ; et
+estimer l'écart à chaque ordre multipliait le temps par vingt, d'où une table
+calculée une fois (`estimated_spreads`).
 
 **Écarté.**
 - *Python vectorisé (numpy) dans l'API*, comme le prévoyait d'abord le lot 24

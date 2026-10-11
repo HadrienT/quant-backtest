@@ -2,11 +2,21 @@
   "name": "quant-backtest",
   "version-string": "0.1.0",
   "builtin-baseline": "abc3a32cf9e4813d19b50cf3898676324f5fe5fb",
-  "dependencies": ["eigen3"],
+  "dependencies": [
+    "eigen3"
+  ],
   "features": {
     "tests": {
       "description": "Unit tests (GoogleTest)",
-      "dependencies": ["gtest"]
+      "dependencies": [
+        "gtest"
+      ]
+    },
+    "benchmarks": {
+      "description": "Benchmarks (google-benchmark)",
+      "dependencies": [
+        "benchmark"
+      ]
     }
   }
 }

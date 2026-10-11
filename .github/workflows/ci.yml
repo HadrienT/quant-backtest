@@ -49,6 +49,9 @@ jobs:
           # Everything but hedging/ builds and passes without quantModeling.
           - preset: no-hedging
             build_dir: build-no-hedging
+          # The benchmark must keep building; its timings are not read here.
+          - preset: bench
+            build_dir: build-bench
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache

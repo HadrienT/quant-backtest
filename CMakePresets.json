@@ -44,6 +44,16 @@
       "cacheVariables": {
         "QB_BUILD_HEDGING": "OFF"
       }
+    },
+    {
+      "name": "bench",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-bench",
+      "cacheVariables": {
+        "VCPKG_MANIFEST_FEATURES": "tests;benchmarks",
+        "QB_BUILD_BENCHMARKS": "ON",
+        "QB_BUILD_HEDGING": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -66,6 +76,10 @@
     {
       "name": "no-hedging",
       "configurePreset": "no-hedging"
+    },
+    {
+      "name": "bench",
+      "configurePreset": "bench"
     }
   ]
 }
