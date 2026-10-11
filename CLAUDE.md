@@ -19,6 +19,8 @@ factorielle de `attribution/`. Le wheel `quantbacktest` expose :
 - `build_info()`, `fingerprint()`, `total_returns()`, `period_rates()` ;
 - `run_allocation()`, le backtest d'une stratégie avec ses points de
   comparaison, son run brut et son bilan de coûts ;
+- `run_allocation_grid()`, un backtest par configuration, qui rend la table
+  attendue par la validation ;
 - `performance_report()`, `factor_regression()`, `sharpe_difference()` ;
 - `walk_forward()`, `combinatorial_purged_cv()`, `deflated_sharpe()`,
   `backtest_overfitting()`, sur une table de rendements à une colonne par
@@ -38,11 +40,11 @@ ou Heston) ; la version sur surfaces historiques attend des données (issue
 #15). Il contourne un défaut du pricer Heston de `quantModeling` loin du
 strike (ADR-011) : à retirer quand `quant-modeling#168` est corrigée.
 
-Ce que le moteur comptable **ne fait pas** encore (issue #9) :
-positions vendeuses et coût d'emprunt (refusées par une erreur), rendement de
-radiation d'un titre qui cesse de coter (la position reste à son dernier
-cours, signalée dans le rapport de qualité), impact de marché en racine
-carrée, lots entiers.
+Le moteur comptable sait vendre à découvert (`allow_short`, avec un taux
+d'emprunt fourni), arrondir aux lots entiers (`whole_shares`) et facturer un
+impact de marché en racine carrée. Ce qu'il **ne fait pas** encore (issue #9) :
+le rendement de radiation d'un titre qui cesse de coter (la position reste à
+son dernier cours, signalée dans le rapport de qualité), faute de données.
 
 À savoir avant d'utiliser le coût d'écart estimé : sur des titres liquides les
 estimateurs de Corwin-Schultz et d'Abdi-Ranaldo surestiment l'écart d'un ordre

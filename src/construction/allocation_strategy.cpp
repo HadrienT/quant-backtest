@@ -84,9 +84,9 @@ namespace quantBacktest
         {
             throw Error("the rebalancing period must be at least 1 day");
         }
-        if (!(config.min_weight >= 0.0) || !(config.max_weight <= 1.0) || !(config.min_weight <= config.max_weight))
+        if (!(config.min_weight >= -1.0) || !(config.max_weight <= 2.0) || !(config.min_weight <= config.max_weight))
         {
-            throw Error("the bounds of a weight must satisfy 0 <= minimum <= maximum <= 1: short positions are not supported");
+            throw Error("the bounds of a weight must satisfy -1 <= minimum <= maximum <= 2; a negative minimum is a short position, which the run must allow");
         }
         if (config.method == AllocationMethod::RiskParity && (config.min_weight != 0.0 || config.max_weight != 1.0))
         {

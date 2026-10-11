@@ -126,7 +126,7 @@ namespace quantBacktest
                 }
                 ASSERT_NEAR(r.value[k], r.cash[k] + positions, tolerance) << "value on day " << k;
                 ASSERT_NEAR(r.value[k] - previous,
-                            r.position_pnl[k] + r.dividends[k] + r.interest[k] - r.costs[k], tolerance)
+                            r.position_pnl[k] + r.dividends[k] + r.interest[k] - r.costs[k] - r.borrow_cost[k], tolerance)
                     << "change of value on day " << k;
                 previous = r.value[k];
             }
@@ -750,6 +750,125 @@ namespace quantBacktest
         EXPECT_NEAR(r.interest[2], 0.001 * r.cash[1], 1e-9);
         EXPECT_LT(r.interest[2], 0.0);
         expectConservation(m, r);
+    }
+
+    // ---- Short positions ----
+
+    // A short position: the proceeds go to cash, a rise of the price is a
+    // loss, the dividend detached is paid, and the shares borrowed cost the
+    // borrow rate. Conservation holds with the fee as one more term.
+    TEST(Engine, AShortPositionPaysDividendsAndTheBorrowFee)
+    {
+        SyntheticMarket m;
+        m.days = 5;
+        m.assets = 1;
+        m.dates = {10959, 10960, 10961, 10962, 10963};
+        m.close = {100.0, 100.0, 110.0, 108.0, 108.0};
+        m.dividends = {{0, 10962, 2.0}};
+        const std::vector<Real> borrow = {0.0, 0.0, 0.001, 0.001, 0.001};
+        MarketData data = m.data();
+        data.borrow_rate = borrow;
+        BacktestConfig c = config();
+        c.allow_short = true;
+
+        // 50 shares sold at the close of day 1, at 100.
+        Once sell(0, DecisionKind::Orders, {-50.0});
+        const BacktestResult r = run_backtest(data, sell, c);
+        EXPECT_DOUBLE_EQ(r.shares[1], -50.0);
+        EXPECT_DOUBLE_EQ(r.cash[1], Capital + 5000.0);
+        EXPECT_DOUBLE_EQ(r.value[1], Capital);
+        // Day 2: the price rises by 10, the fee is 0.1 % of the 5000 borrowed.
+        EXPECT_DOUBLE_EQ(r.position_pnl[2], -500.0);
+        EXPECT_DOUBLE_EQ(r.borrow_cost[2], 5.0);
+        EXPECT_DOUBLE_EQ(r.value[2], Capital - 505.0);
+        // Day 3: a dividend of 2 per share is owed on the 50 shares; the fee
+        // is on the 5500 borrowed at the previous close.
+        EXPECT_DOUBLE_EQ(r.dividends[3], -100.0);
+        EXPECT_DOUBLE_EQ(r.borrow_cost[3], 5.5);
+        EXPECT_DOUBLE_EQ(r.position_pnl[3], 100.0);
+        expectConservation(m, r);
+        EXPECT_NE(r.conventions.cash.find("borrow rate"), std::string::npos);
+
+        // Target weights: 50 % short, the rest in cash.
+        Once shortHalf(0, DecisionKind::TargetWeights, {-0.5});
+        const BacktestResult weighted = run_backtest(data, shortHalf, c);
+        EXPECT_DOUBLE_EQ(weighted.shares[1], -0.5 * Capital / 100.0);
+        EXPECT_DOUBLE_EQ(weighted.cash[1], 1.5 * Capital);
+
+        // Covering: a target of zero buys back exactly what was sold.
+        const std::vector<Real> targets = {-0.5, std::numeric_limits<Real>::quiet_NaN(), 0.0};
+        Scheduled cover(targets, 1);
+        const BacktestResult covered = run_backtest(data, cover, c);
+        EXPECT_EQ(covered.shares[3], 0.0);
+        EXPECT_EQ(covered.borrow_cost[4], 0.0);
+        expectConservation(m, covered);
+    }
+
+    // A long-short strategy on a full market, with events and costs.
+    TEST(Engine, ConservationWithShortPositions)
+    {
+        SyntheticMarket m = eventfulMarket();
+        const std::vector<Real> borrow(m.days, 0.02 / 252.0);
+        MarketData data = m.data();
+        data.borrow_rate = borrow;
+        const ProportionalCost cost(0.0005);
+        BacktestConfig c = config(ExecutionTiming::NextOpen, &cost);
+        c.allow_short = true;
+        // Long the first half of the assets, short the second, rebalanced.
+        std::vector<Real> weights(m.assets);
+        for (Index i = 0; i < m.assets; ++i)
+        {
+            weights[i] = i < m.assets / 2 ? 0.5 : -0.2;
+        }
+        testing::ConstantWeights strategy(weights, 10);
+        const BacktestResult r = run_backtest(data, strategy, c);
+        expectConservation(m, r);
+        Real fees = 0.0;
+        Real owed = 0.0;
+        for (Index k = 0; k < r.value.size(); ++k)
+        {
+            fees += r.borrow_cost[k];
+            owed += std::min(r.dividends[k], 0.0);
+        }
+        EXPECT_GT(fees, 0.0);
+        EXPECT_LT(r.shares[m.at(m.days - 1, m.assets - 1)], 0.0);
+        EXPECT_GT(r.shares[m.at(m.days - 1, 0)], 0.0);
+    }
+
+    // ---- Whole shares ----
+
+    TEST(Engine, WholeSharesRoundOrdersTowardsZero)
+    {
+        const SyntheticMarket m = testing::makeMarket(120, 5, 12, {.dividends = false, .annualRate = 0.0});
+        const ProportionalCost cost(0.001);
+        BacktestConfig c = config(ExecutionTiming::NextClose, &cost);
+        c.whole_shares = true;
+        testing::ConstantWeights strategy(equalWeights(m.assets), 20);
+        const BacktestResult r = run_backtest(m.data(), strategy, c);
+        ASSERT_FALSE(r.journal.empty());
+        for (const OrderRecord &order : r.journal)
+        {
+            EXPECT_EQ(order.quantity, std::trunc(order.quantity));
+            EXPECT_LE(std::abs(order.quantity), std::abs(order.requested));
+        }
+        for (Index k = 0; k < r.value.size(); ++k)
+        {
+            ASSERT_GE(r.cash[k], 0.0);
+            for (Index i = 0; i < m.assets; ++i)
+            {
+                ASSERT_EQ(r.shares[k * m.assets + i], std::trunc(r.shares[k * m.assets + i]));
+            }
+        }
+        expectConservation(m, r);
+        // What rounding does not spend stays in cash: less than one share of
+        // each asset, plus the cost reserve.
+        Real oneOfEach = 0.0;
+        for (Index i = 0; i < m.assets; ++i)
+        {
+            oneOfEach += m.close[m.at(1, i)];
+        }
+        EXPECT_LT(r.cash[1], oneOfEach + 0.002 * Capital);
+        EXPECT_NE(r.conventions.execution.find("whole shares"), std::string::npos);
     }
 
     // ---- What the engine refuses ----

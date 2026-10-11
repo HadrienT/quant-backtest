@@ -2,6 +2,8 @@
 
 #include "quantBacktest/core/error.hpp"
 #include "quantBacktest/costs/cost_model.hpp"
+#include "quantBacktest/costs/impact.hpp"
+#include "quantBacktest/engine/backtest.hpp"
 #include "quantBacktest/costs/spread_estimators.hpp"
 
 #include "support/synthetic_market.hpp"
@@ -294,6 +296,129 @@ namespace quantBacktest
         EXPECT_DOUBLE_EQ(stack.cost(view, fill), commission.cost(view, fill) + spread.cost(view, fill));
         EXPECT_NE(stack.describe().find("plus"), std::string::npos);
         EXPECT_THROW(CostStack({&commission, nullptr}), Error);
+    }
+
+    // ---- Market impact ----
+
+    TEST(ImpactTables, ReadOnlyTheDaysBeforeAndIgnoreSplits)
+    {
+        const testing::SyntheticMarket m = testing::makeMarket(80, 3, 4);
+        const std::vector<Real> volatility = trailing_volatility(m.data(), 21, 10);
+        const std::vector<Real> volume = trailing_dollar_volume(m.data(), 21, 10);
+        // Row 40 by hand, asset 1: returns of days 19 to 39.
+        std::vector<Real> returns;
+        Real amount = 0.0;
+        for (Index s = 19; s < 40; ++s)
+        {
+            returns.push_back(m.close[m.at(s, 1)] / m.close[m.at(s - 1, 1)] - 1.0);
+            amount += m.close[m.at(s, 1)] * m.volume[m.at(s, 1)] / 21.0;
+        }
+        Real mean = 0.0;
+        for (const Real r : returns)
+        {
+            mean += r / 21.0;
+        }
+        Real squares = 0.0;
+        for (const Real r : returns)
+        {
+            squares += (r - mean) * (r - mean);
+        }
+        EXPECT_NEAR(volatility[m.at(40, 1)], std::sqrt(squares / 20.0), 1e-12);
+        EXPECT_NEAR(volume[m.at(40, 1)], amount, 1e-6 * amount);
+        EXPECT_TRUE(std::isnan(volatility[m.at(20, 1)]));
+        EXPECT_TRUE(std::isnan(volume[m.at(20, 1)]));
+
+        // Day 40 and after do not enter row 40.
+        testing::SyntheticMarket changed = m;
+        for (Index t = 40; t < m.days; ++t)
+        {
+            changed.close[changed.at(t, 1)] *= 1.3;
+            changed.volume[changed.at(t, 1)] *= 5.0;
+        }
+        EXPECT_EQ(trailing_volatility(changed.data(), 21, 10)[m.at(40, 1)], volatility[m.at(40, 1)]);
+        EXPECT_EQ(trailing_dollar_volume(changed.data(), 21, 10)[m.at(40, 1)], volume[m.at(40, 1)]);
+
+        // A split changes neither: prices halve, volumes double.
+        testing::SyntheticMarket split = m;
+        split.addSplit(1, 30, 2.0);
+        const std::vector<Real> splitVolatility = trailing_volatility(split.data(), 21, 10);
+        const std::vector<Real> splitVolume = trailing_dollar_volume(split.data(), 21, 10);
+        for (Index t = 21; t < m.days; ++t)
+        {
+            ASSERT_NEAR(splitVolatility[m.at(t, 1)], volatility[m.at(t, 1)], 1e-12);
+            ASSERT_NEAR(splitVolume[m.at(t, 1)], volume[m.at(t, 1)], 1e-9 * volume[m.at(t, 1)]);
+        }
+
+        testing::SyntheticMarket bare = m;
+        bare.volume.clear();
+        EXPECT_THROW(trailing_dollar_volume(bare.data(), 21, 10), Error);
+        EXPECT_THROW(trailing_volatility(m.data(), 1, 1), Error);
+    }
+
+    // The cost grows as the power 3/2 of the size: twice the order costs
+    // 2.83 times as much.
+    TEST(SquareRootImpactCost, GrowsAsThePowerThreeHalvesOfTheSize)
+    {
+        const testing::SyntheticMarket m = testing::makeMarket(10, 2, 1);
+        const MarketData data = m.data();
+        const EventIndex events(data);
+        const MarketView view(data, events, 5);
+        std::vector<Real> volatility(m.days * m.assets, 0.02);
+        std::vector<Real> volume(m.days * m.assets, 1e7);
+        volume[m.at(5, 1)] = NaN;
+        const SquareRootImpactCost impact({volatility.data(), m.days, m.assets}, {volume.data(), m.days, m.assets}, 1.0);
+        // 1 % of the daily amount: 0.02 x sqrt(0.01) = 20 basis points.
+        EXPECT_NEAR(impact.cost(view, {5, 0, 1000.0, 100.0}), 1e5 * 0.002, 1e-9);
+        EXPECT_NEAR(impact.cost(view, {5, 0, -2000.0, 100.0}) / impact.cost(view, {5, 0, 1000.0, 100.0}), std::pow(2.0, 1.5), 1e-12);
+        EXPECT_TRUE(std::isnan(impact.cost(view, {5, 1, 1000.0, 100.0})));
+        EXPECT_NO_THROW(impact.validate(data));
+        EXPECT_NE(impact.describe().find("square-root"), std::string::npos);
+        EXPECT_THROW(SquareRootImpactCost(MatrixView{}, {volume.data(), m.days, m.assets}, 1.0), Error);
+        EXPECT_THROW(SquareRootImpactCost({volatility.data(), m.days, m.assets}, {volume.data(), m.days, m.assets}, -1.0), Error);
+        const SquareRootImpactCost misshapen({volatility.data(), m.days - 1, m.assets}, {volume.data(), m.days, m.assets}, 1.0);
+        EXPECT_THROW(misshapen.validate(data), Error);
+    }
+
+    // Capacity: with impact, a strategy does not scale. Ten times the capital
+    // pays more than ten times the costs, and trades a larger share of the
+    // daily amount.
+    TEST(SquareRootImpactCost, MakesAStrategyLoseItsScaleInvariance)
+    {
+        const testing::SyntheticMarket m = testing::makeMarket(300, 6, 9);
+        const MarketData data = m.data();
+        const std::vector<Real> volatility = trailing_volatility(data, 21, 10);
+        const std::vector<Real> volume = trailing_dollar_volume(data, 21, 10);
+        const MatrixView volumeView{volume.data(), m.days, m.assets};
+        const SquareRootImpactCost impact({volatility.data(), m.days, m.assets}, volumeView, 1.0);
+        const auto run = [&](Real capital)
+        {
+            testing::Momentum strategy(20, 5);
+            BacktestConfig config;
+            config.initial_capital = capital;
+            config.costs = &impact;
+            config.start_index = 30;
+            return run_backtest(data, strategy, config);
+        };
+        const BacktestResult small = run(1e6);
+        const BacktestResult large = run(1e7);
+        Real smallCosts = 0.0;
+        Real largeCosts = 0.0;
+        for (Index k = 0; k < small.costs.size(); ++k)
+        {
+            smallCosts += small.costs[k];
+            largeCosts += large.costs[k];
+        }
+        ASSERT_GT(smallCosts, 0.0);
+        // 10^1.5 = 31.6, less what the costs themselves take off the book.
+        EXPECT_GT(largeCosts, 25.0 * smallCosts);
+        EXPECT_LT(large.value.back() / 1e7, small.value.back() / 1e6);
+
+        const Participation smallShare = participation(small, volumeView, m.dates);
+        const Participation largeShare = participation(large, volumeView, m.dates);
+        EXPECT_GT(smallShare.executions, 50u);
+        EXPECT_GE(smallShare.maximum, smallShare.median);
+        EXPECT_NEAR(largeShare.median / smallShare.median, 10.0, 1.0);
+        EXPECT_THROW(participation(small, MatrixView{}, m.dates), Error);
     }
 
 } // namespace quantBacktest

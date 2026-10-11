@@ -113,6 +113,7 @@ namespace quantBacktest
             series(market.universe.size(), days * assets, "universe");
             series(market.cash_rate.size(), days, "cash_rate");
             series(market.debit_rate.size(), days, "debit_rate");
+            series(market.borrow_rate.size(), days, "borrow_rate");
             return ok;
         }
 
@@ -405,6 +406,7 @@ namespace quantBacktest
         const bool datesOk = checkDates(market, out);
         checkRates(market.cash_rate, market.dates, "the cash rate is missing or infinite", out);
         checkRates(market.debit_rate, market.dates, "the debit rate is missing or infinite", out);
+        checkRates(market.borrow_rate, market.dates, "the borrow rate is missing or infinite", out);
         if (datesOk)
         {
             checkEvents(market, out);

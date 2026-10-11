@@ -61,6 +61,9 @@ namespace quantBacktest
         /// Optional: the same for a negative balance. Without it, a negative
         /// balance pays `cash_rate`.
         std::span<const Real> debit_rate;
+        /// Optional, required to sell short: the simple rate paid over each
+        /// period on the value of the shares borrowed (the stock borrow fee).
+        std::span<const Real> borrow_rate;
 
         std::span<const Dividend> dividends;
         std::span<const Split> splits;

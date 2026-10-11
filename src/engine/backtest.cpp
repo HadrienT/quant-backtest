@@ -76,6 +76,7 @@ namespace quantBacktest
                     if (t > start)
                     {
                         accrueInterest(t);
+                        payBorrowFee(t);
                     }
                     applySplits(t);
                     payDividends(t);
@@ -105,6 +106,7 @@ namespace quantBacktest
                 Real dividends = 0.0;
                 Real interest = 0.0;
                 Real costs = 0.0;
+                Real borrow = 0.0;
                 Real traded = 0.0;
                 Real turnover = 0.0;
                 Index stale = 0;
@@ -115,7 +117,7 @@ namespace quantBacktest
                 result_.assets = assets_;
                 result_.dates.reserve(length);
                 for (std::vector<Real> *series : {&result_.value, &result_.cash, &result_.position_pnl, &result_.dividends,
-                                                  &result_.interest, &result_.costs, &result_.traded_notional, &result_.turnover})
+                                                  &result_.interest, &result_.costs, &result_.borrow_cost, &result_.traded_notional, &result_.turnover})
                 {
                     series->reserve(length);
                 }
@@ -134,6 +136,26 @@ namespace quantBacktest
                     day_.interest = cash_ * rates[t];
                     cash_ += day_.interest;
                 }
+            }
+
+            // Stock borrow fee over the period that ends on day t, on the value
+            // of the short positions at the previous close.
+            void payBorrowFee(Index t)
+            {
+                if (market_.borrow_rate.empty())
+                {
+                    return;
+                }
+                Real borrowed = 0.0;
+                for (Index i = 0; i < assets_; ++i)
+                {
+                    if (shares_[i] < 0.0)
+                    {
+                        borrowed -= shares_[i] * price_[i];
+                    }
+                }
+                day_.borrow = borrowed * market_.borrow_rate[t];
+                cash_ -= day_.borrow;
             }
 
             void applySplits(Index t)
@@ -254,9 +276,9 @@ namespace quantBacktest
                     {
                         throw Error("the strategy returned an infinite value" + where);
                     }
-                    if (weights && x < 0.0)
+                    if (weights && x < 0.0 && !config_.allow_short)
                     {
-                        throw Error("short positions are not supported: negative target weight" + where);
+                        throw Error("short positions are not allowed in this run: negative target weight" + where);
                     }
                     if (x > 0.0 && !view.in_universe(t, i))
                     {
@@ -320,6 +342,20 @@ namespace quantBacktest
                 {
                     costOrders(order, view, t, prices);
                 }
+                if (config_.whole_shares)
+                {
+                    // Towards zero: an order never grows by being rounded. A
+                    // target of zero already sells exactly what is held.
+                    for (Trade &trade : trades_)
+                    {
+                        const bool closes = trade.weight == 0.0 && order.kind == DecisionKind::TargetWeights;
+                        if (!closes)
+                        {
+                            trade.quantity = std::trunc(trade.quantity);
+                            trade.cost = costOf(view, t, trade.asset, trade.quantity, prices[trade.asset]);
+                        }
+                    }
+                }
                 if (!config_.allow_borrowing)
                 {
                     fitToCash(view, t, prices, value);
@@ -331,13 +367,19 @@ namespace quantBacktest
                     const Real price = prices[i];
                     if (trade.quantity != 0.0)
                     {
-                        if (shares_[i] + trade.quantity < -1e-12 * std::max(1.0, std::abs(shares_[i])))
+                        const bool closes = trade.weight == 0.0 && order.kind == DecisionKind::TargetWeights;
+                        Real after = closes ? 0.0 : shares_[i] + trade.quantity;
+                        if (!config_.allow_short && after < 0.0)
                         {
-                            throw Error("short positions are not supported: the order sells more than is held, for asset " +
-                                        std::to_string(i) + " on " + format_date(market_.dates[t]));
+                            if (after < -1e-12 * std::max(1.0, std::abs(shares_[i])))
+                            {
+                                throw Error("short positions are not allowed in this run: the order sells more than is held, for asset " +
+                                            std::to_string(i) + " on " + format_date(market_.dates[t]));
+                            }
+                            after = 0.0;
                         }
                         reprice(i, price);
-                        shares_[i] = trade.weight == 0.0 && order.kind == DecisionKind::TargetWeights ? 0.0 : std::max(shares_[i] + trade.quantity, 0.0);
+                        shares_[i] = after;
                         cash_ -= trade.quantity * price + trade.cost;
                         day_.costs += trade.cost;
                         day_.traded += std::abs(trade.quantity) * price;
@@ -454,7 +496,7 @@ namespace quantBacktest
                 {
                     if (trade.quantity > 0.0)
                     {
-                        trade.quantity *= low;
+                        trade.quantity = config_.whole_shares ? std::floor(trade.quantity * low) : trade.quantity * low;
                         trade.cost = costOf(view, t, trade.asset, trade.quantity, prices[trade.asset]);
                         trade.status = OrderStatus::PartiallyFilled;
                     }
@@ -470,6 +512,7 @@ namespace quantBacktest
                 result_.dividends.push_back(day_.dividends);
                 result_.interest.push_back(day_.interest);
                 result_.costs.push_back(day_.costs);
+                result_.borrow_cost.push_back(day_.borrow);
                 result_.traded_notional.push_back(day_.traded);
                 result_.turnover.push_back(day_.turnover);
                 result_.stale_positions.push_back(day_.stale);
@@ -520,6 +563,14 @@ namespace quantBacktest
                          ? "cash earns no interest (no rate series was given)"
                          : "cash earns the simple rate given for each period, applied to the balance of the previous close";
             c.cash += config.allow_borrowing ? "; a negative balance pays the debit rate" : "; no borrowing: purchases are scaled down to the cash available";
+            if (config.allow_short)
+            {
+                c.cash += "; short positions pay the borrow rate given for each period on the value of the shares borrowed, and the dividends detached";
+            }
+            if (config.whole_shares)
+            {
+                c.execution += "; orders are rounded towards zero to whole shares";
+            }
             c.corporate_actions = "splits multiply the shares and dividends are credited in cash, both on their effective date and before any execution of that day";
             c.turnover = "half the amount traded over the portfolio value at execution; cash is not counted as an asset";
             return c;
@@ -549,6 +600,10 @@ namespace quantBacktest
         if (config.timing == ExecutionTiming::SameClose && config.costs == nullptr)
         {
             throw Error("executing at the close the signal was computed on needs an explicit cost model");
+        }
+        if (config.allow_short && market.borrow_rate.empty())
+        {
+            throw Error("selling short needs the 'borrow_rate' series: the fee of each period, zero if the shares are free to borrow");
         }
         if (config.costs != nullptr)
         {
