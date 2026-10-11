@@ -27,10 +27,13 @@ gtest_discover_tests(quantBacktest_tests)
 if(QB_BUILD_HEDGING)
   add_executable(quantBacktest_hedging_tests
     testHedgingPricing.cpp
+    testHedging.cpp
   )
+  # testHedgingPricing.cpp prices with quantModeling directly.
   target_link_libraries(quantBacktest_hedging_tests
     PRIVATE
       quantBacktest_hedging
+      quantModeling
       GTest::gtest_main
   )
   qb_set_warnings(quantBacktest_hedging_tests)

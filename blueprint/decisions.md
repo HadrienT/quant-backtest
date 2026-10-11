@@ -276,3 +276,32 @@ contraintes : ni secteur, ni neutralité au marché, ni limite de rotation
 cette décision. La covariance doit être définie positive : celle de
 l'échantillon ne l'est pas avec moins de périodes que de titres, et elle est
 alors refusée avec un message qui renvoie à l'estimateur contracté.
+
+---
+
+## ADR-011 — Dans la couverture, `quantModeling` valorise ; le monde simulé est écrit ici
+
+**Décision.** Le backtest de couverture en monde simulé demande à
+`quantModeling` les prix et les grecques (Black-Scholes par le registre,
+Heston par la méthode COS, volatilité implicite), et simule lui-même les
+trajectoires du marché, avec le générateur de l'ADR-009 : un pas exact en
+Black-Scholes, un schéma d'Euler à troncature complète en Heston.
+
+**Pourquoi.** Une couverture a besoin, à chaque date, de l'état complet du
+monde (le spot **et** la variance) ; le cadre de simulation de `quantModeling`
+est fait pour valoriser un produit, et n'expose que ce que le produit lit.
+Simuler ici garde aussi le déterminisme sous notre contrôle : un flux par
+trajectoire, donc le même résultat quel que soit le nombre de threads.
+
+**Écarté.**
+- *Passer par `ISimulationModel` de `quantModeling`* : il faudrait y déclarer
+  une ligne de temps et un produit factice pour lire les spots, et la variance
+  n'en sortirait pas.
+- *Écrire aussi les pricers ici* : c'est précisément ce que ce dépôt ne fait
+  pas. Le seul calcul de pricing ajouté est un garde-fou, celui qui suit.
+
+**Garde-fou assumé.** `heston_cos_price` rend des prix faux quand le strike
+sort de son intervalle d'intégration (issue `quant-modeling#168`). Au-delà de
+huit écarts-types du strike, `hedging/` n'appelle pas le pricer et prend la
+valeur intrinsèque, qui est la valeur exacte à la précision machine. À retirer
+quand le défaut est corrigé et le commit épinglé monté.

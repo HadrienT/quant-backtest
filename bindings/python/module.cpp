@@ -15,6 +15,10 @@
 #include "quantBacktest/inference/sharpe_difference.hpp"
 #include "quantBacktest/risk_models/var_backtest.hpp"
 
+#ifdef QB_HAS_HEDGING
+#include "quantBacktest/hedging/hedging_backtest.hpp"
+#endif
+
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -568,6 +572,140 @@ namespace
         return out;
     }
 
+#ifdef QB_HAS_HEDGING
+    double number(const py::dict &values, const char *key, const char *where)
+    {
+        if (!values.contains(key))
+        {
+            throw qb::Error(std::string("'") + where + "' needs the key '" + key + "'");
+        }
+        return py::cast<double>(values[key]);
+    }
+
+    // world: {"model": "black_scholes", "spot", "rate", "dividend_yield", "volatility"}
+    //     or {"model": "heston", "spot", "rate", "dividend_yield", "v0", "kappa", "theta", "xi", "rho"}.
+    // A model is named and given by its parameters: no object of the pricing
+    // wheel crosses (ADR-005).
+    qb::HedgingConfig hedgingConfig(const py::dict &world, double strike, double maturity, bool isCall, std::size_t rebalances,
+                                    std::size_t paths, std::uint64_t seed, std::size_t threads)
+    {
+        qb::HedgingConfig config;
+        if (!world.contains("model"))
+        {
+            throw qb::Error("'world' needs the key 'model'");
+        }
+        config.world.kind = choose<qb::WorldKind>(py::cast<std::string>(world["model"]), "model",
+                                                  {{"black_scholes", qb::WorldKind::BlackScholes}, {"heston", qb::WorldKind::Heston}});
+        config.world.spot = number(world, "spot", "world");
+        config.world.rate = number(world, "rate", "world");
+        config.world.dividend_yield = number(world, "dividend_yield", "world");
+        if (config.world.kind == qb::WorldKind::BlackScholes)
+        {
+            config.world.volatility = number(world, "volatility", "world");
+        }
+        else
+        {
+            config.world.heston = {number(world, "v0", "world"), number(world, "kappa", "world"), number(world, "theta", "world"),
+                                   number(world, "xi", "world"), number(world, "rho", "world")};
+            if (world.contains("substeps"))
+            {
+                config.world.substeps = py::cast<std::size_t>(world["substeps"]);
+            }
+        }
+        config.option = {strike, maturity, isCall};
+        config.rebalances = rebalances;
+        config.paths = paths;
+        config.seed = seed;
+        config.threads = threads;
+        return config;
+    }
+
+    py::dict fitMinimumVarianceDelta(const py::dict &world, double strike, double maturity, std::size_t rebalances, std::size_t paths,
+                                     std::uint64_t seed, bool isCall, std::size_t threads, const Callback &progress, const Callback &cancel)
+    {
+        const qb::HedgingConfig config = hedgingConfig(world, strike, maturity, isCall, rebalances, paths, seed, threads);
+        const Control control(progress, cancel);
+        qb::MinimumVarianceCoefficients k;
+        {
+            const py::gil_scoped_release release;
+            k = qb::fit_minimum_variance_delta(config, control.get());
+        }
+        py::dict out;
+        out["a"] = k.a;
+        out["b"] = k.b;
+        out["c"] = k.c;
+        return out;
+    }
+
+    py::dict hedgingBacktest(const py::dict &world, double strike, double maturity, const std::string &hedge, std::size_t rebalances,
+                             std::size_t paths, std::uint64_t seed, bool isCall, const py::object &hedgeVolatility, const py::object &coefficients,
+                             double costRate, double confidence, std::size_t threads, const Callback &progress, const Callback &cancel)
+    {
+        qb::HedgingConfig config = hedgingConfig(world, strike, maturity, isCall, rebalances, paths, seed, threads);
+        config.hedge = choose<qb::HedgeKind>(hedge, "hedge",
+                                             {{"black_scholes_fixed", qb::HedgeKind::BlackScholesFixed},
+                                              {"black_scholes_implied", qb::HedgeKind::BlackScholesImplied},
+                                              {"skew_adjusted", qb::HedgeKind::SkewAdjusted},
+                                              {"minimum_variance", qb::HedgeKind::MinimumVariance},
+                                              {"true_model", qb::HedgeKind::TrueModel}});
+        if (config.hedge == qb::HedgeKind::BlackScholesFixed)
+        {
+            if (hedgeVolatility.is_none())
+            {
+                throw qb::Error("hedge 'black_scholes_fixed' needs 'hedge_volatility'");
+            }
+            config.hedge_volatility = py::cast<double>(hedgeVolatility);
+        }
+        if (config.hedge == qb::HedgeKind::MinimumVariance)
+        {
+            if (coefficients.is_none())
+            {
+                throw qb::Error("hedge 'minimum_variance' needs 'coefficients', as returned by fit_minimum_variance_delta()");
+            }
+            const py::dict k = py::dict(coefficients);
+            config.coefficients = {number(k, "a", "coefficients"), number(k, "b", "coefficients"), number(k, "c", "coefficients")};
+        }
+        config.cost_rate = costRate;
+        config.confidence = confidence;
+
+        const Control control(progress, cancel);
+        qb::HedgingResult r;
+        {
+            const py::gil_scoped_release release;
+            r = qb::run_hedging_backtest(config, control.get());
+        }
+        py::dict explanation;
+        explanation["delta"] = toDict(r.explanation.delta);
+        explanation["gamma"] = toDict(r.explanation.gamma);
+        explanation["theta"] = toDict(r.explanation.theta);
+        explanation["vega"] = toDict(r.explanation.vega);
+        explanation["unexplained"] = toDict(r.explanation.unexplained);
+        explanation["unexplained_step_deviation"] = r.explanation.unexplained_step_deviation;
+        explanation["option_step_deviation"] = r.explanation.option_step_deviation;
+
+        py::dict out;
+        out["premium"] = r.premium;
+        out["mean"] = toDict(r.mean);
+        out["standard_deviation"] = toDict(r.standard_deviation);
+        out["skewness"] = r.skewness;
+        out["kurtosis"] = r.kurtosis;
+        py::dict quantiles;
+        quantiles["0.01"] = r.quantile_01;
+        quantiles["0.05"] = r.quantile_05;
+        quantiles["0.95"] = r.quantile_95;
+        quantiles["0.99"] = r.quantile_99;
+        out["quantiles"] = quantiles;
+        out["step_error_autocorrelation"] = r.step_error_autocorrelation;
+        out["discretisation_noise"] = r.discretisation_noise;
+        out["gamma_integral"] = r.gamma_integral ? py::object(toDict(*r.gamma_integral)) : py::object(py::none());
+        out["explanation"] = explanation;
+        out["pnl"] = toArray(r.pnl);
+        out["uncalibrated_steps"] = r.uncalibrated_steps;
+        out["convention"] = r.convention;
+        return out;
+    }
+#endif
+
     // Type, shape and bytes of each array, in order: the same values in
     // another type, another shape or another order are other data.
     std::string fingerprint(const py::args &arrays)
@@ -701,6 +839,37 @@ PYBIND11_MODULE(quantbacktest, m)
           "position_pnl, dividends, interest, costs, traded_notional, turnover,\n"
           "stale_positions, shares, journal), allocations (dates, weights, eligible,\n"
           "in_sample_sharpe, shrinkage), conventions, quality.");
+
+#ifdef QB_HAS_HEDGING
+    m.def("fit_minimum_variance_delta", &fitMinimumVarianceDelta,
+          py::arg("world"),
+          py::kw_only(),
+          py::arg("strike"), py::arg("maturity"), py::arg("rebalances"), py::arg("paths"), py::arg("seed"),
+          py::arg("is_call") = true, py::arg("threads") = 1, py::arg("progress") = py::none(), py::arg("cancel") = py::none(),
+          "Coefficients a, b, c of the minimum-variance delta of Hull and White (2017),\n"
+          "estimated on simulated paths of the world. Estimate on one seed, hedge on another.");
+
+    m.def("hedging_backtest", &hedgingBacktest,
+          py::arg("world"),
+          py::kw_only(),
+          py::arg("strike"), py::arg("maturity"), py::arg("hedge"), py::arg("rebalances"), py::arg("paths"), py::arg("seed"),
+          py::arg("is_call") = true, py::arg("hedge_volatility") = py::none(), py::arg("coefficients") = py::none(),
+          py::arg("cost_rate") = 0.0, py::arg("confidence") = 0.95,
+          py::arg("threads") = 1, py::arg("progress") = py::none(), py::arg("cancel") = py::none(),
+          "Hedging backtest in a simulated world: one option bought and delta-hedged.\n\n"
+          "world: dict naming the model the market follows and its parameters:\n"
+          "    {'model': 'black_scholes', 'spot', 'rate', 'dividend_yield', 'volatility'} or\n"
+          "    {'model': 'heston', 'spot', 'rate', 'dividend_yield', 'v0', 'kappa', 'theta',\n"
+          "     'xi', 'rho'}. Rates are continuous, per year; maturity is in years.\n"
+          "hedge: black_scholes_fixed (needs hedge_volatility), black_scholes_implied,\n"
+          "    skew_adjusted, minimum_variance (needs coefficients) or true_model.\n"
+          "rebalances: number of equally spaced rebalancings over the option's life.\n\n"
+          "Returns a dict: premium; mean and standard_deviation of the P&L at maturity (each\n"
+          "value, standard_error, lower, upper, confidence, method, convention); skewness,\n"
+          "kurtosis, quantiles; step_error_autocorrelation; discretisation_noise;\n"
+          "gamma_integral (black_scholes_fixed only, else None); explanation (delta, gamma,\n"
+          "theta, vega, unexplained); pnl (one value per path); uncalibrated_steps; convention.");
+#endif
 
     m.def("factor_regression", &factorRegression,
           py::arg("excess"), py::arg("factors"),

@@ -10,20 +10,25 @@ Il calcule : il reçoit des tableaux et rend des tableaux.
 
 ## État du dépôt
 
-**Lots B0 (socle), B2 (moteur comptable et coûts), B3 (métriques et inférence),
-B4 (construction) et B7 (modèles de risque) livrés.** Modules présents :
-`core/`, `data/`, `quality/`, `costs/`, `engine/`, `metrics/`, `inference/`,
-`construction/`, `risk_models/`, et la régression factorielle de `attribution/`.
-Le wheel `quantbacktest` expose `build_info()`, `fingerprint()`,
-`performance_report()`, `factor_regression()`, `sharpe_difference()`,
-`var_backtest()` et `run_allocation()`, le backtest d'une stratégie avec ses
-points de comparaison ; leur forme est au §5 de
+**Lots B0, B2, B3, B4, B6 et B7 livrés ; il reste B5 (validation) ici.**
+Modules présents : `core/`, `data/`, `quality/`, `costs/`, `engine/`,
+`metrics/`, `inference/`, `construction/`, `risk_models/`, `hedging/`, et la
+régression factorielle de `attribution/`. Le wheel `quantbacktest` expose
+`build_info()`, `fingerprint()`, `performance_report()`, `factor_regression()`,
+`sharpe_difference()`, `var_backtest()`, `run_allocation()` (le backtest d'une
+stratégie avec ses points de comparaison), `hedging_backtest()` et
+`fit_minimum_variance_delta()` ; leur forme est au §5 de
 [`docs/contract.md`](docs/contract.md). Une stratégie est du C++ : le wheel
 n'accepte pas de poids calculés côté Python, qui contourneraient le
 point-in-time.
 
 Contraintes d'optimisation disponibles : bornes par titre et budget, rien
 d'autre (ADR-010).
+
+Le backtest de couverture tourne en **monde simulé** seulement (Black-Scholes
+ou Heston) ; la version sur surfaces historiques attend des données (issue
+#15). Il contourne un défaut du pricer Heston de `quantModeling` loin du
+strike (ADR-011) : à retirer quand `quant-modeling#168` est corrigée.
 
 Ce que le moteur comptable **ne fait pas** encore (issue #9) :
 positions vendeuses et coût d'emprunt (refusées par une erreur), rendement de
@@ -39,8 +44,7 @@ Le dépôt a été créé le 11 octobre 2026 à partir du lot 24 du blueprint de
 `quant-modeling`, quand le mainteneur a décidé d'écrire le moteur en C++ et de
 le sortir du dépôt de pricing. L'ancienne page `/backtest` de `quant-modeling`
 a été masquée le même jour ; son code Python n'est **pas** repris, le moteur
-est réécrit de zéro. Lots suivants : **B5** et **B6**, indépendants entre
-eux. Le lot B1 est suivi dans `data-ingest` (issue #14
+est réécrit de zéro. Lot suivant : **B5**. Le lot B1 est suivi dans `data-ingest` (issue #14
 de ce dépôt-là). Mettre cette section à jour à chaque lot livré.
 
 ## Par où commencer

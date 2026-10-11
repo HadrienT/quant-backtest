@@ -29,8 +29,14 @@ It covers the four things a desk calls "backtest":
 - the backtest of a value-at-risk model: Kupiec and Christoffersen tests, and
   the Basel traffic-light zones.
 
-Validation (walk-forward, deflated Sharpe ratio) and the hedging backtest are
-not written yet. The work packages are listed in
+- the hedging backtest in a simulated world (Black-Scholes or Heston): an
+  option bought and delta-hedged with a Black-Scholes delta, a skew-adjusted
+  delta, the minimum-variance delta of Hull and White or the delta of the true
+  model, with the P&L explained by the greeks. It is the only part that prices
+  with `quantModeling`.
+
+Validation (walk-forward, deflated Sharpe ratio) is not written yet, and the
+hedging backtest does not run on historical option surfaces yet. The work packages are listed in
 [`blueprint/README.md`](blueprint/README.md).
 
 ## Where it sits
