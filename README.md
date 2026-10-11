@@ -13,10 +13,13 @@ It covers the four things a desk calls "backtest":
 | A **market risk model** (VaR, ES) | Do realised losses match the announced ones, in number and in clustering? |
 | An **exposure model** | Do realised values fall where the simulated distribution said? |
 
-**Status: build skeleton only.** The repository builds, tests and packages a
-wheel, and prices a call through the pinned `quantModeling` library; no
-backtesting module is written yet. The work packages are listed in
-[`blueprint/README.md`](blueprint/README.md).
+**Status: accounting engine.** The event-driven engine is written and tested:
+a book in shares and cash, dividends and splits applied from raw prices, a
+declared signal-to-execution timeline, an order journal, proportional and
+spread costs, data quality controls. Metrics, portfolio construction,
+validation, the hedging backtest and the risk-model backtest are not written
+yet, and the Python wheel does not expose the engine yet. The work packages
+are listed in [`blueprint/README.md`](blueprint/README.md).
 
 ## Where it sits
 
@@ -56,6 +59,7 @@ Dependencies are installed from [`vcpkg.json`](vcpkg.json) at configure time;
 scripts/make.sh          # configure, build, run the tests
 scripts/make_asan.sh     # same, under ASan and UBSan
 scripts/build_wheel.sh   # Python wheel in dist/
+scripts/bench.sh         # benchmark of the accounting engine
 ```
 
 ```python

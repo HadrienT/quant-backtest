@@ -6,6 +6,7 @@ project(quantBacktest VERSION 0.1.0 LANGUAGES CXX)
 # ---- Build options ----
 option(QB_BUILD_TESTS "Build unit tests (GoogleTest)" OFF)
 option(QB_BUILD_PYTHON "Build Python bindings (pybind11)" OFF)
+option(QB_BUILD_BENCHMARKS "Build benchmarks (google-benchmark)" OFF)
 option(QB_BUILD_HEDGING "Build the hedging module, the only one that uses quantModeling" ON)
 
 # ---- Global options ----
@@ -42,6 +43,14 @@ configure_file(
 
 add_library(quantBacktest
   ${PROJECT_BINARY_DIR}/generated/build_info.cpp
+  src/core/types.cpp
+  src/data/market_data.cpp
+  src/data/returns.cpp
+  src/quality/quality_report.cpp
+  src/costs/spread_estimators.cpp
+  src/costs/cost_model.cpp
+  src/engine/backtest.cpp
+  src/engine/vectorized.cpp
 )
 
 set_target_properties(quantBacktest PROPERTIES
@@ -68,6 +77,11 @@ if(QB_BUILD_TESTS)
   include(CTest)
   enable_testing()
   add_subdirectory(tests)
+endif()
+
+# ---- Benchmarks (google-benchmark) ----
+if(QB_BUILD_BENCHMARKS)
+  add_subdirectory(benchmarks)
 endif()
 
 # ---- Python binding (pybind11) ----

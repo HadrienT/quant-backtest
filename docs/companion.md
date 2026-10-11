@@ -362,6 +362,19 @@ le temps.
 hauts, plus bas et clôtures quotidiens : Corwin & Schultz (2012), Abdi &
 Ranaldo (2017). Notre base contient ces champs.
 
+> **Limite mesurée au lot B2.** Ces deux estimateurs sont faits pour des écarts
+> larges. Quand l'écart est petit devant la volatilité quotidienne, l'estimation
+> n'est que du bruit, de l'ordre de 0,4 fois cette volatilité pour Corwin &
+> Schultz et de 0,2 fois pour Abdi & Ranaldo sur une fenêtre d'un mois. Sur une
+> grande capitalisation simulée (écart vrai de 3 points de base, volatilité de
+> 1,5 % par jour), ils rendent environ 60 et 30 points de base : dix à vingt
+> fois trop. Ils retrouvent l'écart à 5 % près quand il vaut trois fois la
+> volatilité quotidienne. Sur les titres du S&P 500 l'estimation est donc une
+> **borne supérieure**, pas un coût : le coût par défaut de la page doit être
+> un coût proportionnel déclaré, et l'écart estimé réservé aux titres peu
+> liquides ou à l'analyse de sensibilité du §5.2. Le test
+> `SpreadEstimators.OverstateANarrowSpread` garde ce chiffre sous les yeux.
+
 ### 5.2 Ce qu'on rapporte
 
 - Performance **brute et nette**, côte à côte.
@@ -917,9 +930,10 @@ Pourquoi du C++ : un run isolé sur des données quotidiennes est petit, mais la
 validation le répète des centaines ou des milliers de fois (marche en avant
 avec ré-optimisation sur une grille de paramètres, CPCV, PBO, bootstrap), et le
 backtest de couverture en monde simulé enchaîne chemins × dates ×
-recalibrations autour d'une lib de pricing qui est déjà en C++. Cet argument
-est un ordre de grandeur, pas une mesure : le lot B2 livre un benchmark, et
-les chiffres remplacent cette phrase.
+recalibrations autour d'une lib de pricing qui est déjà en C++. Mesuré au lot
+B2 sur 500 titres et 26 ans : 81 ms pour un run rebalancé chaque mois, 0,97 s
+rebalancé chaque jour, 4,5 ms pour le calcul vectorisé équivalent ; le détail
+et ce qui n'est pas mesuré (la comparaison avec Python) sont dans l'ADR-002.
 
 ```
 include/quantBacktest/
