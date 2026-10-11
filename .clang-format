@@ -1,0 +1,31 @@
+---
+Language: Cpp
+Standard: c++20
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 0
+ContinuationIndentWidth: 4
+
+BreakBeforeBraces: Allman
+NamespaceIndentation: All
+AccessModifierOffset: -2
+IndentCaseLabels: true
+
+PointerAlignment: Right
+ReferenceAlignment: Right
+DerivePointerAlignment: false
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortBlocksOnASingleLine: Never
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+PackConstructorInitializers: NextLine
+
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: Never
+SortIncludes: false
+ReflowComments: false
