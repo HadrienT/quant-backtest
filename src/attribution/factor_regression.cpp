@@ -95,6 +95,15 @@ namespace quantBacktest
 
     } // namespace
 
+    Index newey_west_lag_rule(Index observations)
+    {
+        if (observations == 0)
+        {
+            throw Error("the number of observations must be positive");
+        }
+        return static_cast<Index>(std::floor(4.0 * std::pow(static_cast<Real>(observations) / 100.0, 2.0 / 9.0)));
+    }
+
     FactorRegression factor_regression(std::span<const Real> excess, MatrixView factors, const FactorRegressionConfig &config)
     {
         validate(excess, factors);

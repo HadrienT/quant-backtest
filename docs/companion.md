@@ -1163,7 +1163,9 @@ la page.
 | Memmel, « Performance Hypothesis Testing with the Sharpe Ratio », *Finance Letters* 1(1), 2003 † | §8.4 |
 | Ledoit & Wolf, « Robust Performance Hypothesis Testing with the Sharpe Ratio », *Journal of Empirical Finance* 15(5), 2008 | §8.4 |
 | Politis & Romano, « The Stationary Bootstrap », *Journal of the American Statistical Association* 89(428), 1994 | §8.3 |
+| Politis & White, « Automatic Block-Length Selection for the Dependent Bootstrap », *Econometric Reviews* 23(1), 2004 ; correction de Patton, Politis & White, *Econometric Reviews* 28(4), 2009 | §8.3 |
 | Newey & West, « A Simple, Positive Semi-Definite, Heteroskedasticity and Autocorrelation Consistent Covariance Matrix », *Econometrica* 55(3), 1987 | §10.1 |
+| Newey & West, « Automatic Lag Selection in Covariance Matrix Estimation », *Review of Economic Studies* 61(4), 1994 † | §10.1 |
 | Fama & French, « Common Risk Factors in the Returns on Stocks and Bonds », *Journal of Financial Economics* 33(1), 1993 ; « A Five-Factor Asset Pricing Model », *JFE* 116(1), 2015 | §10.1 |
 | Carhart, « On Persistence in Mutual Fund Performance », *Journal of Finance* 52(1), 1997 | §10.1 |
 | Brinson, Hood & Beebower, « Determinants of Portfolio Performance », *Financial Analysts Journal* 42(4), 1986 ; Brinson & Fachler, « Measuring Non-US Equity Portfolio Performance », *Journal of Portfolio Management* 11(3), 1985 | §10.2 |

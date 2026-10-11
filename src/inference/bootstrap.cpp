@@ -109,6 +109,86 @@ namespace quantBacktest
         return table;
     }
 
+    Real optimal_block_length(std::span<const Real> series)
+    {
+        const Index n = series.size();
+        if (n < 20)
+        {
+            throw Error("choosing a block length needs at least 20 observations");
+        }
+        Real mean = 0.0;
+        for (const Real x : series)
+        {
+            if (!std::isfinite(x))
+            {
+                throw Error("choosing a block length: the series holds a missing or infinite value");
+            }
+            mean += x / static_cast<Real>(n);
+        }
+        const Real size = static_cast<Real>(n);
+        const Index run = std::max<Index>(5, static_cast<Index>(std::ceil(std::log10(size))));
+        const Index maxLag = std::min<Index>(static_cast<Index>(std::ceil(std::sqrt(size))) + run, n - 1);
+
+        // Autocovariances with the n denominator, lags 0 to maxLag.
+        std::vector<Real> covariance(maxLag + 1, 0.0);
+        for (Index k = 0; k <= maxLag; ++k)
+        {
+            for (Index t = k; t < n; ++t)
+            {
+                covariance[k] += (series[t] - mean) * (series[t - k] - mean);
+            }
+            covariance[k] /= size;
+        }
+        if (!(covariance[0] > 1e-24 * (1.0 + mean * mean)))
+        {
+            throw Error("choosing a block length: the series is constant");
+        }
+        const Real threshold = 1.959963984540054 * std::sqrt(std::log10(size) / size);
+        const auto significant = [&](Index lag)
+        { return std::abs(covariance[lag] / covariance[0]) >= threshold; };
+
+        // The first lag that starts `run` insignificant autocorrelations in a
+        // row; failing that, the largest significant lag; failing that, 1.
+        Index cutoff = 0;
+        for (Index j = 1; j + run - 1 <= maxLag && cutoff == 0; ++j)
+        {
+            bool quiet = true;
+            for (Index k = j; k < j + run && quiet; ++k)
+            {
+                quiet = !significant(k);
+            }
+            cutoff = quiet ? j : 0;
+        }
+        if (cutoff == 0)
+        {
+            cutoff = 1;
+            for (Index k = 1; k <= maxLag; ++k)
+            {
+                cutoff = significant(k) ? k : cutoff;
+            }
+        }
+        const Index window = std::min(2 * cutoff, maxLag);
+
+        const auto flatTop = [](Real s)
+        { return s < 0.5 ? 1.0 : (s <= 1.0 ? 2.0 * (1.0 - s) : 0.0); };
+        Real g = covariance[0];
+        Real bigG = 0.0;
+        for (Index k = 1; k <= window; ++k)
+        {
+            const Real weight = flatTop(static_cast<Real>(k) / static_cast<Real>(window));
+            g += 2.0 * weight * covariance[k];
+            bigG += 2.0 * weight * static_cast<Real>(k) * covariance[k];
+        }
+        const Real d = 2.0 * g * g;
+        const Real cap = std::ceil(std::min(3.0 * std::sqrt(size), size / 3.0));
+        if (!(d > 0.0))
+        {
+            return 1.0;
+        }
+        const Real length = std::cbrt(2.0 * bigG * bigG / d) * std::cbrt(size);
+        return std::clamp(length, 1.0, cap);
+    }
+
     BootstrapInterval percentile_interval(std::span<const Real> replications, Real confidence)
     {
         if (replications.size() < 2)

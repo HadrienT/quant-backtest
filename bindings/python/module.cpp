@@ -1082,6 +1082,25 @@ PYBIND11_MODULE(quantbacktest, m)
           "out[0] = 0. The rate of a period is the one known when it starts. basis is the\n"
           "number of days of the money-market year, 360 for USD.");
 
+    m.def(
+        "optimal_block_length",
+        [](const Array &series)
+        { return qb::optimal_block_length(vector(series, "series")); },
+        py::arg("series"),
+        "Mean block length of the stationary bootstrap chosen by the rule of Politis and\n"
+        "White (2004), corrected by Patton, Politis and White (2009): optimal for the\n"
+        "sample mean of the series, a starting point for other statistics. Pass it as\n"
+        "mean_block_length.");
+
+    m.def(
+        "newey_west_lag",
+        [](std::size_t observations)
+        { return qb::newey_west_lag_rule(observations); },
+        py::arg("observations"),
+        "floor(4 (T / 100)^(2/9)): the fixed rule statistical software uses as a default\n"
+        "number of Newey-West lags. A convention, not a data-driven selection. Pass it as\n"
+        "newey_west_lags.");
+
     m.def("performance_report", &performanceReport,
           py::arg("returns"), py::arg("cash_rate"), py::arg("benchmark") = py::none(),
           py::kw_only(),
