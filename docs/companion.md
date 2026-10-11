@@ -522,6 +522,14 @@ métrique et la distribution du drawdown maximal — ce qui répond à la questi
 qu'un gérant pose vraiment : « le drawdown que je vis est-il compatible avec
 le backtest ? ».
 
+> **Mesuré au lot B3**, sur des rendements gaussiens de Sharpe connu (0,8 par
+> an, deux ans d'historique) : l'intervalle analytique du §8.1 contient la
+> vraie valeur dans 94,7 % des tirages, l'intervalle par centiles du bootstrap
+> dans 94,0 %. Les deux tiennent le critère de 95 % ± 2 %. L'intervalle de
+> Newey-West de l'alpha (§10.1) est un peu trop étroit quand les résidus sont
+> autocorrélés : 92 % pour 95 % annoncés, avec 12 retards et une
+> autocorrélation de 0,5.
+
 ### 8.4 Comparer deux stratégies
 
 Deux Sharpe mesurés sur la même période sont corrélés ; on ne compare pas

@@ -5,10 +5,14 @@ include(GoogleTest)
 # one for hedging/. A test that needs a pricer goes in the second.
 add_executable(quantBacktest_tests
   testBuildInfo.cpp
+  testCore.cpp
   testData.cpp
   testQuality.cpp
   testCosts.cpp
   testEngine.cpp
+  testMetrics.cpp
+  testInference.cpp
+  testAttribution.cpp
 )
 target_link_libraries(quantBacktest_tests
   PRIVATE

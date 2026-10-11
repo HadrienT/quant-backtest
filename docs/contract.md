@@ -5,9 +5,8 @@ parlent**. Il est canonique ici ; le modifier est un ADR dans
 [`../blueprint/decisions.md`](../blueprint/decisions.md), et se fait par deux
 issues coordonnées (une par dépôt).
 
-L'interface Python ne porte encore que l'identité du build : les §1 à §4 fixent
-les règles qu'elle suit, le §5 est rempli lot par lot, à mesure que les
-fonctions arrivent.
+Les §1 à §4 fixent les règles que suit l'interface Python ; le §5 liste ses
+fonctions et se remplit lot par lot.
 
 ## 1. Qui possède quoi
 
@@ -99,6 +98,14 @@ sorties, unités, convention.
 | Fonction | Lot | Entrées | Sorties |
 |---|---|---|---|
 | `build_info()` | B0 | aucune | dictionnaire de chaînes : `version` (`majeur.mineur.correctif`, aussi dans `__version__`), `git_sha` (40 chiffres hexadécimaux, suivis de `-dirty` si l'arbre avait des modifications non commitées, ou `unknown` si le build n'avait pas d'information git), `quantmodeling_sha` (40 chiffres hexadécimaux) |
+| `fingerprint(*arrays)` | B3 | un ou plusieurs tableaux numpy, de tout type sauf objet | chaîne de 64 chiffres hexadécimaux : SHA-256 du type, de la forme et des octets de chaque tableau, dans l'ordre. Les mêmes valeurs dans un autre type, une autre forme ou un autre ordre donnent une autre empreinte |
+| `performance_report(returns, cash_rate, benchmark=None, *, bootstrap_replications, mean_block_length, seed, periods_per_year=252, confidence=0.95, tail=0.05, threads=1, progress=None, cancel=None)` | B3 | `returns` : rendements arithmétiques par période, nets de coûts ; `cash_rate` : taux sans risque simple de chaque période, aligné ; `benchmark` : rendements d'un indice dividendes réinvestis, aligné. Les trois arguments du bootstrap n'ont **pas de valeur par défaut** ; `bootstrap_replications=0` ne rend que ce qui a une erreur-type analytique | dictionnaire : `observations`, `periods_per_year`, `years` ; `metrics` (nom → `value`, `standard_error`, `lower`, `upper`, `confidence`, `method`, `convention`) ; `omitted` (nom → raison) ; `t_statistic`, `probabilistic_sharpe_ratio` (seuil zéro), `minimum_track_record_years`. Ratios annualisés en √`periods_per_year` ; `max_drawdown` négatif ou nul ; `value_at_risk` et `expected_shortfall` par période, en **pertes positives**. Une métrique qu'on ne sait pas encadrer est dans `omitted`, pas dans `metrics` |
+| `factor_regression(excess, factors, *, newey_west_lags, periods_per_year=252, confidence=0.95)` | B3 | `excess` : rendements en excès par période ; `factors` : tableau à deux dimensions, une ligne par période, une colonne par facteur. `newey_west_lags` n'a **pas de valeur par défaut** (0 = covariance de White) | dictionnaire : `alpha` (**annualisé** : intercept × `periods_per_year`, même forme qu'une métrique), `betas` (liste, une entrée par facteur), `alpha_t_statistic`, `beta_t_statistics`, `r_squared`, `residual_volatility` (annualisée), `observations`, `newey_west_lags` |
+
+Erreurs : une entrée inutilisable lève `quantbacktest.Error`, sous-classe de
+`ValueError` ; un run arrêté par `cancel` lève `quantbacktest.Cancelled`,
+sous-classe de `Error`. `progress` reçoit la fraction accomplie ; `cancel` est
+appelée après chaque rapport de progression et arrête le run si elle rend vrai.
 
 ## 6. Compatibilité
 
