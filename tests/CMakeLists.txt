@@ -1,0 +1,28 @@
+find_package(GTest CONFIG REQUIRED)
+include(GoogleTest)
+
+# One executable for everything that must build and pass without quantModeling,
+# one for hedging/. A test that needs a pricer goes in the second.
+add_executable(quantBacktest_tests
+  testBuildInfo.cpp
+)
+target_link_libraries(quantBacktest_tests
+  PRIVATE
+    quantBacktest
+    GTest::gtest_main
+)
+qb_set_warnings(quantBacktest_tests)
+gtest_discover_tests(quantBacktest_tests)
+
+if(QB_BUILD_HEDGING)
+  add_executable(quantBacktest_hedging_tests
+    testHedgingPricing.cpp
+  )
+  target_link_libraries(quantBacktest_hedging_tests
+    PRIVATE
+      quantBacktest_hedging
+      GTest::gtest_main
+  )
+  qb_set_warnings(quantBacktest_hedging_tests)
+  gtest_discover_tests(quantBacktest_hedging_tests PROPERTIES LABELS hedging)
+endif()

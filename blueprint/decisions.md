@@ -68,6 +68,14 @@ configure sans être le projet racine, et qu'il expose une cible utilisable. Si
 ce n'est pas le cas, la correction se fait par une issue et une PR dans
 `quant-modeling`.
 
+**Vérifié au lot B0** (11 octobre 2026, commit `fdc1a10` de `quant-modeling`).
+Il se configure comme sous-projet sans modification : ses chemins partent de
+`PROJECT_SOURCE_DIR`, ses options sont éteintes par défaut, et la cible
+`quantModeling` porte ses en-têtes et Eigen. Aucune issue à ouvrir là-bas. Deux
+conséquences : Eigen entre dans `vcpkg.json` d'ici, parce que la lib le
+cherche ; et `FetchContent` clone tout le dépôt (site compris), un SHA ne
+pouvant pas être tiré en clone superficiel.
+
 **Écarté.**
 - *Sous-module git* : même épinglage, mais une manipulation de plus à chaque
   clone et à chaque montée de version, pour un mainteneur qui veut un clone
@@ -156,3 +164,28 @@ la connaissance du schéma de `data-ingest`.
   métier (créditer un dividende, appliquer une division) sont faits par le
   moteur, à partir des prix bruts et des événements reçus ; il ne reste à
   l'appelant que du SQL.
+
+---
+
+## ADR-008 — `hedging/` est une cible CMake à part
+
+**Décision.** Deux cibles : `quantBacktest` (tous les modules sauf la
+couverture), qui ne lie pas `quantModeling`, et `quantBacktest_hedging`, qui le
+lie. Deux exécutables de test suivent le même découpage. L'option
+`QB_BUILD_HEDGING=OFF` (preset `no-hedging`) retire la seconde, et la CI
+construit les deux configurations.
+
+**Pourquoi.** La règle « seul `hedging/` inclut `quantModeling` » est alors
+tenue par le build et non par la relecture : un fichier de `quantBacktest` qui
+inclurait un en-tête de pricing ne compile pas, faute de chemin d'inclusion.
+Le preset `no-hedging` donne aussi une boucle de travail courte pour les lots
+B2 à B5 et B7, qui n'ont pas à recompiler la lib de pricing.
+
+**Écarté.**
+- *Une seule lib, la règle vérifiée par un script sur les `#include`* : moins
+  de cibles, mais une règle de plus à maintenir hors du build.
+
+**Dans le même lot.** pybind11 vient de l'environnement de build Python
+(`pyproject.toml`) et non de vcpkg, dont le port tire son propre Python ; et
+`vcpkg.json` fixe un `builtin-baseline`, pour que les versions d'Eigen et de
+GoogleTest ne dépendent pas de la date du clone de vcpkg.

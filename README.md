@@ -13,9 +13,10 @@ It covers the four things a desk calls "backtest":
 | A **market risk model** (VaR, ES) | Do realised losses match the announced ones, in number and in clustering? |
 | An **exposure model** | Do realised values fall where the simulated distribution said? |
 
-**Status: specification only.** There is no code yet. The design, the reading
-companion and the work packages are written; the first work package (B0, the
-build skeleton) has not started.
+**Status: build skeleton only.** The repository builds, tests and packages a
+wheel, and prices a call through the pinned `quantModeling` library; no
+backtesting module is written yet. The work packages are listed in
+[`blueprint/README.md`](blueprint/README.md).
 
 ## Where it sits
 
@@ -45,9 +46,23 @@ arrays. The boundary with `quant-modeling` is written down in
 
 ## Build
 
-Not available yet: the build files arrive with work package B0. The intended
-toolchain is the one `quant-modeling` uses (CMake presets, Ninja, vcpkg,
-GoogleTest, clang-format 18).
+Requirements: CMake 3.25 or later, Ninja, a C++20 compiler, and a
+[vcpkg](https://github.com/microsoft/vcpkg) clone pointed to by `VCPKG_ROOT`.
+Dependencies are installed from [`vcpkg.json`](vcpkg.json) at configure time;
+`quantModeling` is fetched at the commit pinned in
+[`cmake/QuantModeling.cmake`](cmake/QuantModeling.cmake).
+
+```bash
+scripts/make.sh          # configure, build, run the tests
+scripts/make_asan.sh     # same, under ASan and UBSan
+scripts/build_wheel.sh   # Python wheel in dist/
+```
+
+```python
+import quantbacktest
+quantbacktest.build_info()
+# {'version': '0.1.0', 'git_sha': '...', 'quantmodeling_sha': '...'}
+```
 
 ## License
 

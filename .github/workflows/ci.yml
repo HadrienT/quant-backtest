@@ -1,0 +1,133 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  format-check:
+    # Pinned on purpose: clang-format's output changes between major versions.
+    # Keep it on the same major as the pre-commit hook (.pre-commit-config.yaml).
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install formatters
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+          pipx install black==24.10.0
+
+      - name: clang-format check
+        run: |
+          FILES=$(git ls-files '*.cpp' '*.cc' '*.cxx' '*.h' '*.hpp' '*.hh')
+          if [ -n "$FILES" ]; then
+            clang-format-18 --dry-run --Werror $FILES
+          fi
+
+      - name: black check
+        run: black --check .
+
+  build-test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: default
+            build_dir: build
+          - preset: asan
+            build_dir: build-asan
+          # Everything but hedging/ builds and passes without quantModeling.
+          - preset: no-hedging
+            build_dir: build-no-hedging
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ curl zip unzip tar pkg-config
+
+      - name: Restore vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg
+            vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+
+      - name: Ensure vcpkg is present
+        run: |
+          mkdir -p vcpkg-cache
+          if [ ! -d "vcpkg/.git" ]; then
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+          fi
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build ${{ matrix.build_dir }}
+
+      - name: Test
+        run: ctest --test-dir ${{ matrix.build_dir }} --output-on-failure
+
+  wheel:
+    runs-on: ubuntu-24.04
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ curl zip unzip tar pkg-config
+
+      - name: Restore vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg
+            vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+
+      - name: Ensure vcpkg is present
+        run: |
+          mkdir -p vcpkg-cache
+          if [ ! -d "vcpkg/.git" ]; then
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+          fi
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the quantbacktest wheel
+        run: scripts/build_wheel.sh
+
+      - name: Install the wheel
+        run: pip install dist/*.whl pytest
+
+      - name: pytest
+        run: pytest

@@ -10,12 +10,18 @@ Il calcule : il reçoit des tableaux et rend des tableaux.
 
 ## État du dépôt
 
-**Spécification seule, aucun code.** Le dépôt a été créé le 11 octobre 2026 à
-partir du lot 24 du blueprint de `quant-modeling`, quand le mainteneur a décidé
-d'écrire le moteur en C++ et de le sortir du dépôt de pricing. L'ancienne page
-`/backtest` de `quant-modeling` a été masquée le même jour ; son code Python
-n'est **pas** repris, le moteur est réécrit de zéro. Le premier lot à faire est
-**B0** (socle de build). Mettre cette section à jour à chaque lot livré.
+**Lot B0 (socle de build) livré ; aucun module de calcul encore.** Le dépôt se
+construit, se teste et produit un wheel `quantbacktest` qui n'expose que
+`build_info()`. La lib `quantModeling` est tirée au commit épinglé dans
+[`cmake/QuantModeling.cmake`](cmake/QuantModeling.cmake) et un test valorise un
+call avec elle.
+
+Le dépôt a été créé le 11 octobre 2026 à partir du lot 24 du blueprint de
+`quant-modeling`, quand le mainteneur a décidé d'écrire le moteur en C++ et de
+le sortir du dépôt de pricing. L'ancienne page `/backtest` de `quant-modeling`
+a été masquée le même jour ; son code Python n'est **pas** repris, le moteur
+est réécrit de zéro. Les lots suivants, indépendants entre eux, sont **B2**,
+**B3** et **B7**. Mettre cette section à jour à chaque lot livré.
 
 ## Par où commencer
 
@@ -74,10 +80,30 @@ Règles de frontière :
 
 ## Commandes
 
-Aucune pour l'instant : les fichiers de build arrivent avec le lot B0, qui
-remplira ce tableau. La cible est la même chaîne que `quant-modeling` :
-`cmake --preset default && cmake --build build`, `ctest --test-dir build`,
-un preset `asan`, `scripts/make.sh`, `scripts/build_wheel.sh`.
+`VCPKG_ROOT` doit pointer sur un clone de vcpkg ; les dépendances sont
+installées par le manifeste [`vcpkg.json`](vcpkg.json) à la configuration.
+
+| Commande | Effet |
+|---|---|
+| `scripts/make.sh` | Configure (preset `default`), construit dans `build/`, lance tous les tests |
+| `scripts/make_asan.sh` | Idem avec ASan et UBSan, dans `build-asan/` |
+| `cmake --preset default && cmake --build build` | Construire sans lancer les tests |
+| `ctest --test-dir build --output-on-failure` | Tous les tests |
+| `ctest --test-dir build -LE hedging` | Les tests qui n'ont pas besoin de `quantModeling` |
+| `ctest --test-dir build -R BuildInfo` | Les tests dont le nom contient un motif |
+| `cmake --preset no-hedging && cmake --build build-no-hedging` | Construire sans `quantModeling` (principe 6) |
+| `scripts/build_wheel.sh` | Wheel `quantbacktest` dans `dist/` |
+| `pytest` | Tests Python, sur le wheel installé dans l'environnement courant |
+| `pre-commit run --all-files` | `clang-format` 18 et `black` |
+
+Cibles CMake : `quantBacktest` (tout sauf la couverture, ne lie pas
+`quantModeling`), `quantBacktest_hedging` (la seule qui le lie),
+`quantBacktest_tests` et `quantBacktest_hedging_tests`. Un fichier source ou un
+test nouveau s'ajoute à la main dans la liste de sa cible.
+
+**Monter la version de `quantModeling`** : changer `QB_QUANTMODELING_SHA` dans
+`cmake/QuantModeling.cmake` (un SHA de commit, jamais une branche), dans une PR
+à part.
 
 ## Suivi du travail — GitHub Issues
 

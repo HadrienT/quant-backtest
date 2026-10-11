@@ -1,0 +1,76 @@
+cmake_minimum_required(VERSION 3.25)
+
+# The version is read from this line by pyproject.toml: keep it on one line.
+project(quantBacktest VERSION 0.1.0 LANGUAGES CXX)
+
+# ---- Build options ----
+option(QB_BUILD_TESTS "Build unit tests (GoogleTest)" OFF)
+option(QB_BUILD_PYTHON "Build Python bindings (pybind11)" OFF)
+option(QB_BUILD_HEDGING "Build the hedging module, the only one that uses quantModeling" ON)
+
+# ---- Global options ----
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+include(BuildInfo)
+
+function(qb_set_warnings target)
+  target_compile_options(${target} PRIVATE
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang>:-Wall -Wextra -Wpedantic -Wconversion -Wshadow>
+  )
+endfunction()
+
+# ---- quantModeling, pinned (blueprint/decisions.md, ADR-003) ----
+# Declared before the build stamp, which records the pinned commit.
+if(QB_BUILD_HEDGING)
+  include(QuantModeling)
+else()
+  set(QB_QUANTMODELING_SHA "")
+endif()
+
+# ---- Main library ----
+# Everything except hedging/. It does not link quantModeling, so none of its
+# sources can include a quantModeling header.
+configure_file(
+  ${PROJECT_SOURCE_DIR}/src/core/build_info.cpp.in
+  ${PROJECT_BINARY_DIR}/generated/build_info.cpp
+  @ONLY
+)
+
+add_library(quantBacktest
+  ${PROJECT_BINARY_DIR}/generated/build_info.cpp
+)
+
+set_target_properties(quantBacktest PROPERTIES
+  POSITION_INDEPENDENT_CODE ON
+)
+
+target_include_directories(quantBacktest
+  PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+qb_set_warnings(quantBacktest)
+
+# ---- Hedging module ----
+# Header-less for now: lot B6 turns it into a compiled library. It exists from
+# lot B0 so that the dependency on quantModeling has exactly one entry point.
+if(QB_BUILD_HEDGING)
+  add_library(quantBacktest_hedging INTERFACE)
+  target_link_libraries(quantBacktest_hedging INTERFACE quantBacktest quantModeling)
+endif()
+
+# ---- Tests (GoogleTest) ----
+if(QB_BUILD_TESTS)
+  include(CTest)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
+
+# ---- Python binding (pybind11) ----
+if(QB_BUILD_PYTHON)
+  add_subdirectory(bindings/python)
+endif()
