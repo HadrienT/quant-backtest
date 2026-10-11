@@ -13,13 +13,18 @@ It covers the four things a desk calls "backtest":
 | A **market risk model** (VaR, ES) | Do realised losses match the announced ones, in number and in clustering? |
 | An **exposure model** | Do realised values fall where the simulated distribution said? |
 
-**Status: accounting engine.** The event-driven engine is written and tested:
-a book in shares and cash, dividends and splits applied from raw prices, a
-declared signal-to-execution timeline, an order journal, proportional and
-spread costs, data quality controls. Metrics, portfolio construction,
-validation, the hedging backtest and the risk-model backtest are not written
-yet, and the Python wheel does not expose the engine yet. The work packages
-are listed in [`blueprint/README.md`](blueprint/README.md).
+**Status: accounting engine, metrics and inference.** Written and tested:
+
+- the event-driven engine: a book in shares and cash, dividends and splits
+  applied from raw prices, a declared signal-to-execution timeline, an order
+  journal, proportional and spread costs, data quality controls;
+- performance metrics, each returned with its interval: the standard error of
+  the Sharpe ratio, the probabilistic Sharpe ratio, the stationary bootstrap;
+- the factor regression, with an annualised alpha and Newey-West errors.
+
+Portfolio construction, validation, the hedging backtest and the risk-model
+backtest are not written yet. The work packages are listed in
+[`blueprint/README.md`](blueprint/README.md).
 
 ## Where it sits
 
@@ -63,10 +68,23 @@ scripts/bench.sh         # benchmark of the accounting engine
 ```
 
 ```python
-import quantbacktest
-quantbacktest.build_info()
-# {'version': '0.1.0', 'git_sha': '...', 'quantmodeling_sha': '...'}
+import numpy as np
+import quantbacktest as qb
+
+report = qb.performance_report(
+    returns, cash_rate,              # one rate per period, the rate of the time
+    bootstrap_replications=1000, mean_block_length=10.0, seed=1,
+)
+report["metrics"]["sharpe_ratio"]
+# {'value': 0.81, 'standard_error': 0.58, 'lower': -0.33, 'upper': 1.95,
+#  'confidence': 0.95, 'method': 'Lo (2002) standard error ...', 'convention': ...}
+
+qb.factor_regression(excess, factors, newey_west_lags=5)["alpha"]
+qb.build_info()   # version, commit, commit of quantModeling
 ```
+
+The Python wheel exposes the statistics only; the accounting engine is C++
+for now. The functions are listed in [`docs/contract.md`](docs/contract.md).
 
 ## License
 

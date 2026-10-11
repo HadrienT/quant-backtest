@@ -209,3 +209,30 @@ B2 à B5 et B7, qui n'ont pas à recompiler la lib de pricing.
 (`pyproject.toml`) et non de vcpkg, dont le port tire son propre Python ; et
 `vcpkg.json` fixe un `builtin-baseline`, pour que les versions d'Eigen et de
 GoogleTest ne dépendent pas de la date du clone de vcpkg.
+
+---
+
+## ADR-009 — Un générateur aléatoire à nous, un flux par réplication
+
+**Décision.** Tout tirage passe par `core/random.hpp` (SplitMix64), jamais par
+les distributions de `<random>`. Chaque réplication d'un bootstrap tire dans
+son propre flux, dérivé de la graine et du numéro de la réplication. Les
+premiers tirages du générateur sont épinglés par un test.
+
+**Pourquoi.** Le contrat demande les mêmes chiffres au bit près pour les mêmes
+entrées et la même graine, quel que soit le nombre de threads, et sur toute
+machine. Les distributions de la bibliothèque standard ne garantissent pas la
+même suite d'une implémentation à l'autre ; et un générateur partagé entre
+threads donnerait un résultat qui dépend de l'ordonnancement.
+
+**Écarté.**
+- *`std::mt19937_64` et `std::uniform_real_distribution`* : le moteur est
+  spécifié, pas la distribution.
+- *Un générateur par thread* : déterministe pour un nombre de threads donné,
+  mais le résultat change quand ce nombre change.
+
+**Dans le même lot (B3).** Eigen entre dans la lib principale (régression,
+puis optimisation au lot B4), en dépendance privée : aucun en-tête public ne
+l'expose. Le nombre de retards de Newey-West et la longueur de bloc du
+bootstrap n'ont pas de valeur par défaut : ce sont des choix que l'appelant
+déclare, et que le résultat répète.

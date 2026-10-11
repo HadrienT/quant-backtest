@@ -10,11 +10,14 @@ Il calcule : il reçoit des tableaux et rend des tableaux.
 
 ## État du dépôt
 
-**Lots B0 (socle) et B2 (moteur comptable et coûts) livrés.** Modules présents :
-`core/`, `data/`, `quality/`, `costs/`, `engine/`. Le wheel `quantbacktest`
-n'expose encore que `build_info()` : le moteur n'a pas de binding Python tant
-que les stratégies ne sont pas en C++ (lot B4), parce qu'un tableau de poids
-calculé côté Python contournerait le point-in-time.
+**Lots B0 (socle), B2 (moteur comptable et coûts) et B3 (métriques et
+inférence) livrés.** Modules présents : `core/`, `data/`, `quality/`, `costs/`,
+`engine/`, `metrics/`, `inference/`, et la régression factorielle de
+`attribution/`. Le wheel `quantbacktest` expose `build_info()`, `fingerprint()`,
+`performance_report()` et `factor_regression()` ; leur forme est au §5 de
+[`docs/contract.md`](docs/contract.md). Le moteur comptable n'a pas de binding
+Python tant que les stratégies ne sont pas en C++ (lot B4), parce qu'un tableau
+de poids calculé côté Python contournerait le point-in-time.
 
 Ce que le moteur comptable **ne fait pas** encore (issue #9) :
 positions vendeuses et coût d'emprunt (refusées par une erreur), rendement de
@@ -30,8 +33,9 @@ Le dépôt a été créé le 11 octobre 2026 à partir du lot 24 du blueprint de
 `quant-modeling`, quand le mainteneur a décidé d'écrire le moteur en C++ et de
 le sortir du dépôt de pricing. L'ancienne page `/backtest` de `quant-modeling`
 a été masquée le même jour ; son code Python n'est **pas** repris, le moteur
-est réécrit de zéro. Lots suivants : **B3** et **B7** (indépendants), puis
-**B4**, qui attend B3. Mettre cette section à jour à chaque lot livré.
+est réécrit de zéro. Lots suivants : **B4**, **B6** et **B7**, indépendants
+entre eux ; B5 attend B4. Le lot B1 est suivi dans `data-ingest` (issue #14
+de ce dépôt-là). Mettre cette section à jour à chaque lot livré.
 
 ## Par où commencer
 
@@ -104,7 +108,7 @@ installées par le manifeste [`vcpkg.json`](vcpkg.json) à la configuration.
 | `cmake --preset no-hedging && cmake --build build-no-hedging` | Construire sans `quantModeling` (principe 6) : la boucle courte pour tout sauf `hedging/` |
 | `scripts/bench.sh` | Construit (preset `bench`, dans `build-bench/`) et lance le benchmark ; les arguments vont à google-benchmark, par exemple `--benchmark_filter=Monthly` |
 | `scripts/build_wheel.sh` | Wheel `quantbacktest` dans `dist/` |
-| `pytest` | Tests Python, sur le wheel installé dans l'environnement courant |
+| `pytest` | Tests Python, sur le wheel installé dans l'environnement courant (`pip install dist/*.whl pytest`) |
 | `pre-commit run --all-files` | `clang-format` 18 et `black` |
 
 Cibles CMake : `quantBacktest` (tout sauf la couverture, ne lie pas
@@ -113,6 +117,8 @@ Cibles CMake : `quantBacktest` (tout sauf la couverture, ne lie pas
 Un fichier source ou un test nouveau s'ajoute à la main dans la liste de sa
 cible. Les tests construisent leurs données avec
 [`tests/support/synthetic_market.hpp`](tests/support/synthetic_market.hpp).
+Tout tirage aléatoire de la lib passe par `core/random.hpp` (ADR-009) ; les
+tests, eux, peuvent utiliser `<random>`.
 
 **Monter la version de `quantModeling`** : changer `QB_QUANTMODELING_SHA` dans
 `cmake/QuantModeling.cmake` (un SHA de commit, jamais une branche), dans une PR

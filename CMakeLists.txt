@@ -44,6 +44,8 @@ configure_file(
 add_library(quantBacktest
   ${PROJECT_BINARY_DIR}/generated/build_info.cpp
   src/core/types.cpp
+  src/core/estimate.cpp
+  src/core/fingerprint.cpp
   src/data/market_data.cpp
   src/data/returns.cpp
   src/quality/quality_report.cpp
@@ -51,6 +53,11 @@ add_library(quantBacktest
   src/costs/cost_model.cpp
   src/engine/backtest.cpp
   src/engine/vectorized.cpp
+  src/metrics/performance.cpp
+  src/inference/sharpe_inference.cpp
+  src/inference/bootstrap.cpp
+  src/inference/performance_report.cpp
+  src/attribution/factor_regression.cpp
 )
 
 set_target_properties(quantBacktest PROPERTIES
@@ -60,6 +67,16 @@ set_target_properties(quantBacktest PROPERTIES
 target_include_directories(quantBacktest
   PUBLIC
     ${PROJECT_SOURCE_DIR}/include
+)
+
+# Eigen stays out of the public headers: the interface is spans and vectors.
+find_package(Eigen3 CONFIG REQUIRED)
+find_package(Threads REQUIRED)
+target_link_libraries(quantBacktest
+  PRIVATE
+    Eigen3::Eigen
+  PUBLIC
+    Threads::Threads
 )
 
 qb_set_warnings(quantBacktest)
