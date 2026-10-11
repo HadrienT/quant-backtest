@@ -17,6 +17,7 @@
 #include "quantBacktest/inference/performance_report.hpp"
 #include "quantBacktest/inference/sharpe_difference.hpp"
 #include "quantBacktest/metrics/cost_report.hpp"
+#include "quantBacktest/risk_models/pla_test.hpp"
 #include "quantBacktest/risk_models/var_backtest.hpp"
 #include "quantBacktest/validation/cpcv.hpp"
 #include "quantBacktest/validation/overfitting.hpp"
@@ -1276,6 +1277,44 @@ PYBIND11_MODULE(quantbacktest, m)
           "Returns a dict: dates, returns (one row per date, one column per configuration:\n"
           "the table walk_forward, combinatorial_purged_cv, deflated_sharpe and\n"
           "backtest_overfitting take), descriptions, final_values.");
+
+    m.def(
+        "pla_test",
+        [](const Array &hypothetical, const Array &riskTheoretical)
+        {
+            const qb::PlaTest r = qb::pla_test(vector(hypothetical, "hypothetical"), vector(riskTheoretical, "risk_theoretical"));
+            py::dict out;
+            out["observations"] = r.observations;
+            out["spearman"] = r.spearman;
+            out["kolmogorov_smirnov"] = r.kolmogorov_smirnov;
+            out["kolmogorov_smirnov_p_value"] = r.kolmogorov_smirnov_p_value;
+            out["zone"] = r.zone ? py::object(py::str(qb::zone_name(*r.zone))) : py::object(py::none());
+            return out;
+        },
+        py::arg("hypothetical"), py::arg("risk_theoretical"),
+        "P&L attribution test of the Basel Framework (MAR32.34 to MAR32.43): the\n"
+        "hypothetical P&L of a desk against the risk-theoretical P&L of its risk model.\n\n"
+        "Returns a dict: observations, spearman, kolmogorov_smirnov,\n"
+        "kolmogorov_smirnov_p_value, zone (green, amber or red, for 250 days only, else\n"
+        "None).");
+
+    m.def(
+        "desk_backtest",
+        [](const Array &pnl, const Array &var99, const Array &var975)
+        {
+            const qb::DeskBacktest r = qb::desk_backtest(vector(pnl, "pnl"), vector(var99, "value_at_risk_99"), vector(var975, "value_at_risk_975"));
+            py::dict out;
+            out["observations"] = r.observations;
+            out["exceptions_99"] = r.exceptions_99;
+            out["exceptions_975"] = r.exceptions_975;
+            out["within_limits"] = r.within_limits;
+            return out;
+        },
+        py::arg("pnl"), py::arg("value_at_risk_99"), py::arg("value_at_risk_975"),
+        "Desk-level backtesting of the Basel Framework (MAR32.19) over the last 12 months:\n"
+        "more than 12 exceptions at 99 % or more than 30 at 97.5 % and the desk leaves the\n"
+        "internal model.\n\n"
+        "Returns a dict: observations, exceptions_99, exceptions_975, within_limits.");
 
     m.def("factor_regression", &factorRegression,
           py::arg("excess"), py::arg("factors"),

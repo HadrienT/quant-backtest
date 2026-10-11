@@ -67,6 +67,7 @@ add_library(quantBacktest
   src/construction/allocation_strategy.cpp
   src/construction/grid.cpp
   src/risk_models/var_backtest.cpp
+  src/risk_models/pla_test.cpp
   src/validation/validation.cpp
 )
 

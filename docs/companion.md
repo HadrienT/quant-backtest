@@ -908,7 +908,8 @@ systèmes du front office, avec tous les facteurs de risque) au P&L
 **théorique du risque** (calculé par le modèle de risque, avec ses facteurs
 simplifiés), sur 250 jours, par deux statistiques : la corrélation de rang de
 Spearman et la distance de Kolmogorov-Smirnov entre les deux distributions.
-*Seuils à revérifier.*
+*Seuils revérifiés contre MAR32.42 ; ce sont ceux du code, comme la limite
+par desk de MAR32.19.*
 
 | Zone | Corrélation de Spearman | Distance de Kolmogorov-Smirnov |
 |---|---|---|
