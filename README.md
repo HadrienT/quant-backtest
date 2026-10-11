@@ -13,36 +13,39 @@ It covers the four things a desk calls "backtest":
 | A **market risk model** (VaR, ES) | Do realised losses match the announced ones, in number and in clustering? |
 | An **exposure model** | Do realised values fall where the simulated distribution said? |
 
-**Status: the engine is complete.** Written and tested:
+**Status: every work package of this repository is delivered.** Written and
+tested:
 
 - the event-driven engine: a book in shares and cash, dividends and splits
   applied from raw prices, a declared signal-to-execution timeline, an order
-  journal, proportional and spread costs, data quality controls;
-- performance metrics, each returned with its interval: the standard error of
-  the Sharpe ratio, the probabilistic Sharpe ratio, the stationary bootstrap;
-- the factor regression, with an annualised alpha and Newey-West errors;
+  journal, short positions with a borrow fee, whole shares, data quality
+  controls;
+- costs: proportional, half an estimated spread, square-root market impact;
+  gross next to net, turnover, cost per year and break-even cost;
 - portfolio construction: equal weight, minimum variance, maximum Sharpe ratio
   and risk parity, with a Ledoit-Wolf covariance and bounds held inside the
-  optimiser; a strategy is always returned with the equal-weight portfolio and
-  buy-and-hold next to it, and a test of the difference between two Sharpe
-  ratios;
-- the backtest of a value-at-risk model: Kupiec and Christoffersen tests, and
-  the Basel traffic-light zones.
-
+  optimiser; a strategy always comes with the equal-weight portfolio and
+  buy-and-hold next to it;
+- performance metrics, each returned with its interval: the standard error of
+  the Sharpe ratio, the probabilistic Sharpe ratio, the stationary bootstrap,
+  the test of the difference between two Sharpe ratios; the factor regression,
+  with an annualised alpha and Newey-West errors;
+- validation against overfitting: a grid of configurations, walk-forward
+  selection, combinatorial purged cross-validation, the deflated Sharpe ratio
+  and the probability of backtest overfitting;
 - the hedging backtest in a simulated world (Black-Scholes or Heston): an
   option bought and delta-hedged with a Black-Scholes delta, a skew-adjusted
   delta, the minimum-variance delta of Hull and White or the delta of the true
   model, with the P&L explained by the greeks. It is the only part that prices
-  with `quantModeling`.
+  with `quantModeling`;
+- the backtest of a risk model: Kupiec and Christoffersen tests, the Basel
+  traffic-light zones, the P&L attribution test and the desk-level limits of
+  the Basel Framework.
 
-- validation against overfitting: walk-forward selection, combinatorial
-  purged cross-validation, the deflated Sharpe ratio and the probability of
-  backtest overfitting.
-
-Every work package of this repository is delivered. What is left is outside
-it: the data (`data-ingest`) and the page (`quant-modeling`). The hedging
-backtest does not run on historical option surfaces yet. The work packages are listed in
-[`blueprint/README.md`](blueprint/README.md).
+What is left is outside this repository: the data (`data-ingest`) and the
+page (`quant-modeling`). The hedging backtest does not run on historical
+option surfaces yet, and the open issues list what else is not done. The work
+packages are in [`blueprint/README.md`](blueprint/README.md).
 
 ## Where it sits
 
