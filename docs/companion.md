@@ -765,6 +765,32 @@ recalibré chaque jour sur les prix simulés, et on mesure l'erreur. Deux
 intérêts ici : cela ne demande **aucun historique d'options**, et la vérité
 est connue, ce qui en fait un test de la chaîne elle-même.
 
+> **Mesuré au lot B6**, pour un call à la monnaie de trois mois couvert chaque
+> jour (63 réajustements), 4 000 trajectoires.
+>
+> *Monde Black-Scholes.* L'écart-type du P&L décroît en $1/\sqrt N$ (pente
+> mesurée de −0,5 à ±0,1 près, de 8 à 256 réajustements) et son niveau est celui
+> de Derman & Kamal à 15 % près. Acheté et couvert à une volatilité implicite de
+> 15 % ou de 25 % quand la réalisée est de 20 %, le P&L moyen est l'intégrale du
+> §11.1, à 5 % près.
+>
+> *Monde Heston* ($\kappa = 2$, $\theta = v_0 = 0{,}04$, $\xi = 0{,}5$,
+> $\rho = -0{,}7$), prime de 3,91 :
+>
+> | Couverture | Écart-type du P&L |
+> |---|---|
+> | Delta de Black-Scholes à la volatilité implicite du jour | 1,059 |
+> | Delta corrigé de la pente du smile | 0,977 |
+> | Delta de variance minimale de Hull & White, coefficients estimés | 0,979 |
+> | Delta de variance minimale du vrai modèle | 0,973 |
+> | Plancher de la couverture discrète (§11.2) | 0,42 |
+>
+> Chaque écart-type a une erreur-type de 0,012. Le vrai modèle a bien le plus
+> faible, mais de très peu : les deux deltas corrigés font presque aussi bien,
+> et tous trois gagnent 8 % sur le delta de Black-Scholes. Le reste, plus du
+> double du plancher, est le risque de volatilité qu'aucun delta ne couvre : il
+> faudrait une seconde option.
+
 ### 11.6 Backtest de stratégies de volatilité
 
 Vendre une option et la couvrir en delta, c'est encaisser $\sigma_i^2 - \sigma_t^2$
@@ -1153,6 +1179,7 @@ la page.
 | Maillard, Roncalli & Teïletche, « The Properties of Equally Weighted Risk Contribution Portfolios », *Journal of Portfolio Management* 36(4), 2010 | §6.2 |
 | Spinu, « An Algorithm for Computing Risk Parity Weights », note de travail, 2013 † | §6.2 |
 | Nocedal & Wright, *Numerical Optimization*, 2ᵉ éd., Springer, 2006 | §6.2 |
+| Lord, Koekkoek & van Dijk, « A Comparison of Biased Simulation Schemes for Stochastic Volatility Models », *Quantitative Finance* 10(2), 2010 † | §11.5 |
 | Moreira & Muir, « Volatility-Managed Portfolios », *Journal of Finance* 72(4), 2017 | §6.2 |
 | Grinold & Kahn, *Active Portfolio Management*, 2ᵉ éd., McGraw-Hill, 1999 | §6.2 |
 

@@ -3,6 +3,7 @@
 
 #include "quantBacktest/core/types.hpp"
 
+#include <cmath>
 #include <cstdint>
 
 namespace quantBacktest
@@ -36,6 +37,30 @@ namespace quantBacktest
             return static_cast<Real>(next() >> 11) * 0x1.0p-53;
         }
 
+        /// Standard normal, by Marsaglia's polar method: only a logarithm and
+        /// a square root, so the draw depends on the platform by one function.
+        Real normal() noexcept
+        {
+            if (hasSpare_)
+            {
+                hasSpare_ = false;
+                return spare_;
+            }
+            for (;;)
+            {
+                const Real u = 2.0 * uniform() - 1.0;
+                const Real v = 2.0 * uniform() - 1.0;
+                const Real s = u * u + v * v;
+                if (s > 0.0 && s < 1.0)
+                {
+                    const Real factor = std::sqrt(-2.0 * std::log(s) / s);
+                    spare_ = v * factor;
+                    hasSpare_ = true;
+                    return u * factor;
+                }
+            }
+        }
+
         /// Uniform on {0, ..., n - 1}; n must be positive.
         Index uniform_index(Index n) noexcept
         {
@@ -51,6 +76,8 @@ namespace quantBacktest
         }
 
         std::uint64_t state_;
+        Real spare_ = 0.0;
+        bool hasSpare_ = false;
     };
 
 } // namespace quantBacktest

@@ -12,6 +12,7 @@ pybind11_add_module(quantbacktest module.cpp)
 target_link_libraries(quantbacktest PRIVATE quantBacktest)
 if(QB_BUILD_HEDGING)
   target_link_libraries(quantbacktest PRIVATE quantBacktest_hedging)
+  target_compile_definitions(quantbacktest PRIVATE QB_HAS_HEDGING)
 endif()
 
 qb_set_warnings(quantbacktest)

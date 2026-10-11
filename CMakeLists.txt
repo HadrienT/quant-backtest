@@ -46,6 +46,7 @@ add_library(quantBacktest
   src/core/types.cpp
   src/core/estimate.cpp
   src/core/fingerprint.cpp
+  src/core/parallel.cpp
   src/data/market_data.cpp
   src/data/returns.cpp
   src/quality/quality_report.cpp
@@ -87,11 +88,22 @@ target_link_libraries(quantBacktest
 qb_set_warnings(quantBacktest)
 
 # ---- Hedging module ----
-# Header-less for now: lot B6 turns it into a compiled library. It exists from
-# lot B0 so that the dependency on quantModeling has exactly one entry point.
+# The only target that links quantModeling. Its public headers show none of
+# it: the pricing library stays a private dependency.
 if(QB_BUILD_HEDGING)
-  add_library(quantBacktest_hedging INTERFACE)
-  target_link_libraries(quantBacktest_hedging INTERFACE quantBacktest quantModeling)
+  add_library(quantBacktest_hedging
+    src/hedging/hedging_backtest.cpp
+  )
+  set_target_properties(quantBacktest_hedging PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+  )
+  target_link_libraries(quantBacktest_hedging
+    PUBLIC
+      quantBacktest
+    PRIVATE
+      quantModeling
+  )
+  qb_set_warnings(quantBacktest_hedging)
 endif()
 
 # ---- Tests (GoogleTest) ----
