@@ -14,6 +14,9 @@
 #include "quantBacktest/inference/performance_report.hpp"
 #include "quantBacktest/inference/sharpe_difference.hpp"
 #include "quantBacktest/risk_models/var_backtest.hpp"
+#include "quantBacktest/validation/cpcv.hpp"
+#include "quantBacktest/validation/overfitting.hpp"
+#include "quantBacktest/validation/walk_forward.hpp"
 
 #ifdef QB_HAS_HEDGING
 #include "quantBacktest/hedging/hedging_backtest.hpp"
@@ -25,6 +28,7 @@
 #include <optional>
 #include <span>
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <string>
 #include <utility>
@@ -379,7 +383,7 @@ namespace
                            const std::optional<Array> &open, const std::optional<Array> &high, const std::optional<Array> &low, const std::optional<Array> &volume,
                            const std::optional<py::array_t<bool, py::array::c_style | py::array::forcecast>> &universe,
                            const std::optional<Array> &cashRate, const py::object &dividends, const py::object &splits,
-                           const std::string &covariance, double minWeight, double maxWeight,
+                           const std::string &covariance, bool expanding, double minWeight, double maxWeight,
                            const std::string &timing, std::size_t extraLagDays, std::size_t startIndex, bool allowBorrowing,
                            const py::object &spreadEstimator, std::size_t spreadWindow, std::size_t spreadMinPairs,
                            double periodsPerYear, const Callback &progress, const Callback &cancel)
@@ -460,6 +464,7 @@ namespace
         allocation.covariance = choose<qb::CovarianceEstimator>(covariance, "covariance",
                                                                 {{"ledoit_wolf", qb::CovarianceEstimator::LedoitWolf}, {"sample", qb::CovarianceEstimator::Sample}});
         allocation.lookback = lookback;
+        allocation.expanding = expanding;
         if (py::isinstance<py::str>(rebalance))
         {
             if (py::cast<std::string>(rebalance) != "monthly")
@@ -569,6 +574,107 @@ namespace
         out["allocations"] = allocations;
         out["conventions"] = conventions;
         out["quality"] = quality;
+        return out;
+    }
+
+    // ---- Validation: a table of returns, one column per configuration ----
+
+    qb::MatrixView configurations(const Array &returns)
+    {
+        if (returns.ndim() != 2)
+        {
+            throw qb::Error("'returns' must be a two-dimensional array, one row per period and one column per configuration tried");
+        }
+        return {returns.data(), static_cast<std::size_t>(returns.shape(0)), static_cast<std::size_t>(returns.shape(1))};
+    }
+
+    py::array_t<std::uint64_t> toIndexArray(const std::vector<std::size_t> &values)
+    {
+        py::array_t<std::uint64_t> out(static_cast<py::ssize_t>(values.size()));
+        for (std::size_t k = 0; k < values.size(); ++k)
+        {
+            out.mutable_at(static_cast<py::ssize_t>(k)) = values[k];
+        }
+        return out;
+    }
+
+    py::dict walkForward(const Array &returns, std::size_t train, std::size_t test, bool expanding, double periodsPerYear)
+    {
+        const qb::WalkForwardResult r = qb::walk_forward(configurations(returns), {train, test, expanding, periodsPerYear});
+        py::list folds;
+        for (const qb::WalkForwardFold &fold : r.folds)
+        {
+            py::dict item;
+            item["train_begin"] = fold.train_begin;
+            item["train_end"] = fold.train_end;
+            item["test_begin"] = fold.test_begin;
+            item["test_end"] = fold.test_end;
+            item["chosen"] = fold.chosen;
+            item["in_sample_sharpe"] = fold.in_sample_sharpe;
+            item["out_of_sample_sharpe"] = fold.out_of_sample_sharpe;
+            folds.append(item);
+        }
+        py::dict out;
+        out["folds"] = folds;
+        out["first_row"] = r.first_row;
+        out["returns"] = toArray(r.returns);
+        out["chosen"] = toIndexArray(r.chosen);
+        return out;
+    }
+
+    py::dict combinatorialPurgedCv(const Array &returns, std::size_t groups, std::size_t testGroups, std::size_t purge, std::size_t embargo, double periodsPerYear)
+    {
+        qb::CpcvConfig config;
+        config.groups = groups;
+        config.test_groups = testGroups;
+        config.purge = purge;
+        config.embargo = embargo;
+        config.periods_per_year = periodsPerYear;
+        const qb::MatrixView view = configurations(returns);
+        const qb::CpcvResult r = qb::combinatorial_purged_cv(view, config);
+        py::dict out;
+        out["splits"] = r.splits;
+        out["paths"] = r.paths;
+        out["path_sharpes"] = toArray(r.path_sharpes);
+        out["path_returns"] = toArray(r.path_returns, r.paths, view.rows());
+        out["in_sample_sharpes"] = toArray(r.in_sample_sharpes);
+        out["out_of_sample_sharpes"] = toArray(r.out_of_sample_sharpes);
+        out["chosen"] = toIndexArray(r.chosen);
+        return out;
+    }
+
+    py::dict deflatedSharpe(const Array &returns, double periodsPerYear)
+    {
+        if (!(periodsPerYear > 0.0))
+        {
+            throw qb::Error("the number of periods per year must be positive");
+        }
+        const qb::DeflatedSharpe d = qb::deflated_sharpe_of_best(configurations(returns));
+        const double annual = std::sqrt(periodsPerYear);
+        py::dict out;
+        out["best"] = d.best;
+        out["sharpe"] = d.sharpe * annual;
+        out["expected_maximum"] = d.expected_maximum * annual;
+        out["trials"] = d.trials;
+        out["sharpe_deviation"] = d.sharpe_deviation * annual;
+        out["deflated_sharpe_ratio"] = d.deflated_sharpe_ratio;
+        return out;
+    }
+
+    py::dict backtestOverfitting(const Array &returns, std::size_t blocks, double periodsPerYear)
+    {
+        if (!(periodsPerYear > 0.0))
+        {
+            throw qb::Error("the number of periods per year must be positive");
+        }
+        const qb::BacktestOverfitting r = qb::probability_of_backtest_overfitting(configurations(returns), blocks);
+        const double annual = std::sqrt(periodsPerYear);
+        py::dict out;
+        out["probability"] = r.probability;
+        out["splits"] = r.splits;
+        out["logits"] = toArray(r.logits);
+        out["mean_in_sample_sharpe"] = r.mean_in_sample_sharpe * annual;
+        out["mean_out_of_sample_sharpe"] = r.mean_out_of_sample_sharpe * annual;
         return out;
     }
 
@@ -821,7 +927,7 @@ PYBIND11_MODULE(quantbacktest, m)
           py::arg("open") = py::none(), py::arg("high") = py::none(), py::arg("low") = py::none(), py::arg("volume") = py::none(),
           py::arg("universe") = py::none(), py::arg("cash_rate") = py::none(),
           py::arg("dividends") = py::none(), py::arg("splits") = py::none(),
-          py::arg("covariance") = "ledoit_wolf", py::arg("min_weight") = 0.0, py::arg("max_weight") = 1.0,
+          py::arg("covariance") = "ledoit_wolf", py::arg("expanding") = false, py::arg("min_weight") = 0.0, py::arg("max_weight") = 1.0,
           py::arg("timing") = "next_close", py::arg("extra_lag_days") = 0, py::arg("start_index") = 0, py::arg("allow_borrowing") = false,
           py::arg("spread_estimator") = py::none(), py::arg("spread_window") = 21, py::arg("spread_min_pairs") = 10,
           py::arg("periods_per_year") = 252.0, py::arg("progress") = py::none(), py::arg("cancel") = py::none(),
@@ -831,7 +937,9 @@ PYBIND11_MODULE(quantbacktest, m)
           "universe: boolean table of index membership. cash_rate: simple rate of each period.\n"
           "dividends: (assets, ex_dates, amounts per share). splits: (assets, dates, ratios).\n"
           "method: equal_weight, minimum_variance, maximum_sharpe or risk_parity.\n"
-          "lookback: daily returns used by the estimates. rebalance: days, or 'monthly'.\n"
+          "lookback: daily returns used by the estimates (with expanding=True, the history\n"
+          "    required before the first decision, the window then growing).\n"
+          "rebalance: days, or 'monthly'.\n"
           "proportional_cost: fraction of the amount traded (0.0005 = 5 basis points).\n"
           "timing: next_close, next_open or same_close.\n"
           "spread_estimator: None, corwin_schultz or abdi_ranaldo (needs high and low).\n\n"
@@ -870,6 +978,47 @@ PYBIND11_MODULE(quantbacktest, m)
           "gamma_integral (black_scholes_fixed only, else None); explanation (delta, gamma,\n"
           "theta, vega, unexplained); pnl (one value per path); uncalibrated_steps; convention.");
 #endif
+
+    m.def("walk_forward", &walkForward,
+          py::arg("returns"),
+          py::kw_only(),
+          py::arg("train"), py::arg("test"),
+          py::arg("expanding") = false, py::arg("periods_per_year") = 252.0,
+          "Walk-forward selection over a table of returns, one row per period and one\n"
+          "column per configuration tried: at each step the configuration with the best\n"
+          "Sharpe ratio on the training window is applied to the next `test` periods.\n\n"
+          "Returns a dict: folds (train_begin, train_end, test_begin, test_end, chosen,\n"
+          "in_sample_sharpe, out_of_sample_sharpe, annualised), first_row, returns (the\n"
+          "out-of-sample returns end to end), chosen (configuration held each period).");
+
+    m.def("combinatorial_purged_cv", &combinatorialPurgedCv,
+          py::arg("returns"),
+          py::kw_only(),
+          py::arg("groups"), py::arg("test_groups"), py::arg("purge"), py::arg("embargo"),
+          py::arg("periods_per_year") = 252.0,
+          "Combinatorial purged cross-validation (Lopez de Prado 2018) over the same table.\n\n"
+          "Returns a dict: splits, paths, path_sharpes (annualised, one per rebuilt\n"
+          "out-of-sample path), path_returns (paths x periods), in_sample_sharpes,\n"
+          "out_of_sample_sharpes and chosen (one per split).");
+
+    m.def("deflated_sharpe", &deflatedSharpe,
+          py::arg("returns"),
+          py::kw_only(),
+          py::arg("periods_per_year") = 252.0,
+          "Deflated Sharpe ratio (Bailey and Lopez de Prado 2014) of the best column of the\n"
+          "table, every column counting as one trial.\n\n"
+          "Returns a dict: best, sharpe, expected_maximum and sharpe_deviation (annualised),\n"
+          "trials, deflated_sharpe_ratio (a probability).");
+
+    m.def("backtest_overfitting", &backtestOverfitting,
+          py::arg("returns"),
+          py::kw_only(),
+          py::arg("blocks"),
+          py::arg("periods_per_year") = 252.0,
+          "Probability of backtest overfitting by combinatorially symmetric cross-validation\n"
+          "(Bailey, Borwein, Lopez de Prado and Zhu 2017); `blocks` is even, at most 20.\n\n"
+          "Returns a dict: probability, splits, logits (one per split), and the champion's\n"
+          "mean_in_sample_sharpe and mean_out_of_sample_sharpe (annualised).");
 
     m.def("factor_regression", &factorRegression,
           py::arg("excess"), py::arg("factors"),

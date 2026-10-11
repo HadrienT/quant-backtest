@@ -15,6 +15,7 @@ add_executable(quantBacktest_tests
   testAttribution.cpp
   testConstruction.cpp
   testRiskModels.cpp
+  testValidation.cpp
 )
 target_link_libraries(quantBacktest_tests
   PRIVATE

@@ -592,6 +592,15 @@ sont des paramètres, donc des essais.
   son rang sur l'autre. La PBO est la fréquence à laquelle le champion
   in-sample finit sous la médiane hors échantillon.
 
+> **Mesuré au lot B5**, sur des rendements sans aucun signal. La PBO vaut 0,5 à
+> ±0,05 près en moyenne (30 configurations, 1 000 jours, 10 blocs). Le Sharpe
+> déflaté du meilleur de 50 essais dépasse 0,95 dans moins de 5 % des tirages,
+> alors que sans correction le même Sharpe passe pour significatif plus de
+> huit fois sur dix. La formule du maximum espéré du §9.1 colle à la simulation
+> à 0,05 écart-type près, de 10 à 1 000 essais. La PBO est rendue **sans
+> erreur-type** : c'est une fréquence sur des partages qui se recouvrent, et on
+> ne sait pas l'encadrer ; la distribution des logits l'accompagne.
+
 ### 9.4 Le protocole de recherche
 
 Ce qui distingue le plus un desk d'un amateur n'est pas une formule, c'est une

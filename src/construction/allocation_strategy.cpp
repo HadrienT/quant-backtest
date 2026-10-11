@@ -110,7 +110,9 @@ namespace quantBacktest
         {
             text += ", expected excess returns equal to their mean over the window";
         }
-        text += ", estimated on the " + std::to_string(config_.lookback) + " daily returns that end on the decision day";
+        text += config_.expanding
+                    ? ", estimated on every daily return up to the decision day (at least " + std::to_string(config_.lookback) + ")"
+                    : ", estimated on the " + std::to_string(config_.lookback) + " daily returns that end on the decision day";
         if (config_.method != AllocationMethod::RiskParity)
         {
             text += std::string(", ") + bounds;
@@ -144,7 +146,7 @@ namespace quantBacktest
         }
         const Index t = market.day();
         const Index assets = market.assets();
-        const Index window = config_.lookback;
+        const Index window = config_.expanding ? t : config_.lookback;
 
         // Assets that can be held: in the universe today, quoted on every day
         // of the window.

@@ -13,7 +13,7 @@ It covers the four things a desk calls "backtest":
 | A **market risk model** (VaR, ES) | Do realised losses match the announced ones, in number and in clustering? |
 | An **exposure model** | Do realised values fall where the simulated distribution said? |
 
-**Status: accounting engine, metrics and inference.** Written and tested:
+**Status: the engine is complete.** Written and tested:
 
 - the event-driven engine: a book in shares and cash, dividends and splits
   applied from raw prices, a declared signal-to-execution timeline, an order
@@ -35,8 +35,13 @@ It covers the four things a desk calls "backtest":
   model, with the P&L explained by the greeks. It is the only part that prices
   with `quantModeling`.
 
-Validation (walk-forward, deflated Sharpe ratio) is not written yet, and the
-hedging backtest does not run on historical option surfaces yet. The work packages are listed in
+- validation against overfitting: walk-forward selection, combinatorial
+  purged cross-validation, the deflated Sharpe ratio and the probability of
+  backtest overfitting.
+
+Every work package of this repository is delivered. What is left is outside
+it: the data (`data-ingest`) and the page (`quant-modeling`). The hedging
+backtest does not run on historical option surfaces yet. The work packages are listed in
 [`blueprint/README.md`](blueprint/README.md).
 
 ## Where it sits
