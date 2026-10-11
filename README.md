@@ -20,10 +20,12 @@ It covers the four things a desk calls "backtest":
   journal, proportional and spread costs, data quality controls;
 - performance metrics, each returned with its interval: the standard error of
   the Sharpe ratio, the probabilistic Sharpe ratio, the stationary bootstrap;
-- the factor regression, with an annualised alpha and Newey-West errors.
+- the factor regression, with an annualised alpha and Newey-West errors;
+- the backtest of a value-at-risk model: Kupiec and Christoffersen tests, and
+  the Basel traffic-light zones.
 
-Portfolio construction, validation, the hedging backtest and the risk-model
-backtest are not written yet. The work packages are listed in
+Portfolio construction, validation and the hedging backtest are not written
+yet. The work packages are listed in
 [`blueprint/README.md`](blueprint/README.md).
 
 ## Where it sits
@@ -80,6 +82,7 @@ report["metrics"]["sharpe_ratio"]
 #  'confidence': 0.95, 'method': 'Lo (2002) standard error ...', 'convention': ...}
 
 qb.factor_regression(excess, factors, newey_west_lags=5)["alpha"]
+qb.var_backtest(pnl, value_at_risk, tail_probability=0.01)["traffic_light"]
 qb.build_info()   # version, commit, commit of quantModeling
 ```
 

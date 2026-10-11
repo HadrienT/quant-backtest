@@ -9,12 +9,14 @@
 #include "quantBacktest/core/fingerprint.hpp"
 #include "quantBacktest/core/run_control.hpp"
 #include "quantBacktest/inference/performance_report.hpp"
+#include "quantBacktest/risk_models/var_backtest.hpp"
 
 #include <atomic>
 #include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace py = pybind11;
 namespace qb = quantBacktest;
@@ -161,6 +163,41 @@ namespace
         return out;
     }
 
+    py::dict toDict(const qb::LikelihoodRatio &test)
+    {
+        py::dict out;
+        out["statistic"] = test.statistic;
+        out["p_value"] = test.p_value;
+        out["degrees_of_freedom"] = test.degrees_of_freedom;
+        return out;
+    }
+
+    py::dict varBacktest(const Array &pnl, const Array &valueAtRisk, double tailProbability)
+    {
+        const std::vector<std::uint8_t> exceptions = qb::var_exceptions(vector(pnl, "pnl"), vector(valueAtRisk, "value_at_risk"));
+        const qb::CoverageTests tests = qb::var_coverage_tests(exceptions, tailProbability);
+        const qb::TrafficLight light = qb::traffic_light(tests.exceptions, tests.observations, tailProbability);
+
+        py::dict zone;
+        zone["zone"] = qb::zone_name(light.zone);
+        zone["cumulative_probability"] = light.cumulative_probability;
+        zone["basel_plus_factor"] = light.basel_plus_factor;
+        zone["frtb_multiplier"] = light.frtb_multiplier;
+
+        py::dict out;
+        out["observations"] = tests.observations;
+        out["exceptions"] = tests.exceptions;
+        out["expected_exceptions"] = tests.expected_exceptions;
+        out["exception_days"] = py::array_t<std::uint8_t>(static_cast<py::ssize_t>(exceptions.size()), exceptions.data());
+        out["unconditional_coverage"] = toDict(tests.unconditional_coverage);
+        out["independence"] = toDict(tests.independence);
+        out["conditional_coverage"] = toDict(tests.conditional_coverage);
+        out["transitions"] = py::make_tuple(py::make_tuple(tests.transitions[0][0], tests.transitions[0][1]),
+                                            py::make_tuple(tests.transitions[1][0], tests.transitions[1][1]));
+        out["traffic_light"] = zone;
+        return out;
+    }
+
     // Type, shape and bytes of each array, in order: the same values in
     // another type, another shape or another order are other data.
     std::string fingerprint(const py::args &arrays)
@@ -240,6 +277,21 @@ PYBIND11_MODULE(quantbacktest, m)
           "Returns a dict: observations, periods_per_year, years, metrics (name to value,\n"
           "standard_error, lower, upper, confidence, method, convention), omitted (name to\n"
           "reason), t_statistic, probabilistic_sharpe_ratio, minimum_track_record_years.");
+
+    m.def("var_backtest", &varBacktest,
+          py::arg("pnl"), py::arg("value_at_risk"),
+          py::kw_only(),
+          py::arg("tail_probability"),
+          "Backtest of a value-at-risk model: realised losses against announced ones.\n\n"
+          "pnl: signed P&L of each day, the hypothetical one (yesterday's portfolio held\n"
+          "    still). value_at_risk: the VaR announced for that day, a positive loss.\n"
+          "tail_probability: 0.01 for a 99 % VaR.\n\n"
+          "Returns a dict: observations, exceptions, expected_exceptions, exception_days\n"
+          "(0/1 per day), unconditional_coverage (Kupiec), independence and\n"
+          "conditional_coverage (Christoffersen), each with statistic, p_value,\n"
+          "degrees_of_freedom (NaN when the sample cannot be tested), transitions\n"
+          "((n00, n01), (n10, n11)), traffic_light (zone, cumulative_probability, and for\n"
+          "250 days at 99 % only, else None: basel_plus_factor, frtb_multiplier).");
 
     m.def("factor_regression", &factorRegression,
           py::arg("excess"), py::arg("factors"),

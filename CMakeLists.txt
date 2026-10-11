@@ -58,6 +58,7 @@ add_library(quantBacktest
   src/inference/bootstrap.cpp
   src/inference/performance_report.cpp
   src/attribution/factor_regression.cpp
+  src/risk_models/var_backtest.cpp
 )
 
 set_target_properties(quantBacktest PROPERTIES
