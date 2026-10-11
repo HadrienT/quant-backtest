@@ -3,6 +3,7 @@
 #include "quantBacktest/core/error.hpp"
 #include "quantBacktest/inference/bootstrap.hpp"
 #include "quantBacktest/inference/performance_report.hpp"
+#include "quantBacktest/inference/sharpe_difference.hpp"
 #include "quantBacktest/inference/sharpe_inference.hpp"
 #include "quantBacktest/metrics/performance.hpp"
 
@@ -316,6 +317,133 @@ namespace quantBacktest
         const BootstrapStatistic failing = [](std::span<const Index>, std::span<Real>)
         { throw Error("the statistic failed"); };
         EXPECT_THROW(stationary_bootstrap(100, 1, failing, config), Error);
+    }
+
+    // ---- Section 8.4 ----
+
+    namespace
+    {
+
+        // Two strategies with the given per-period means, unit-free volatility
+        // of 1 % and correlation rho.
+        void correlatedPair(Index count, Real meanFirst, Real meanSecond, Real rho, std::mt19937_64 &rng, std::vector<Real> &first, std::vector<Real> &second)
+        {
+            std::normal_distribution<Real> normal(0.0, 1.0);
+            first.resize(count);
+            second.resize(count);
+            for (Index t = 0; t < count; ++t)
+            {
+                const Real common = normal(rng);
+                const Real own = normal(rng);
+                first[t] = meanFirst + 0.01 * common;
+                second[t] = meanSecond + 0.01 * (rho * common + std::sqrt(1.0 - rho * rho) * own);
+            }
+        }
+
+        BootstrapConfig noBootstrap()
+        {
+            return {};
+        }
+
+    } // namespace
+
+    TEST(SharpeDifference, FormulaByHand)
+    {
+        std::mt19937_64 rng(21);
+        std::vector<Real> a;
+        std::vector<Real> b;
+        correlatedPair(800, 0.0008, 0.0003, 0.6, rng, a, b);
+        const SharpeDifference d = sharpe_difference(a, b, 252.0, 0.95, noBootstrap());
+        const Real s1 = sharpe_ratio(a);
+        const Real s2 = sharpe_ratio(b);
+        const Real rho = d.correlation;
+        EXPECT_NEAR(rho, 0.6, 0.05);
+        const Real variance = (2.0 - 2.0 * rho + 0.5 * (s1 * s1 + s2 * s2 - 2.0 * s1 * s2 * rho * rho)) / 800.0;
+        EXPECT_NEAR(d.analytical.value, (s1 - s2) * std::sqrt(252.0), 1e-12);
+        EXPECT_NEAR(d.analytical.standard_error, std::sqrt(variance * 252.0), 1e-12);
+        EXPECT_NEAR(d.z_statistic, (s1 - s2) / std::sqrt(variance), 1e-9);
+        EXPECT_NEAR(d.p_value, 2.0 * normal_cdf(-std::abs(d.z_statistic)), 1e-12);
+        EXPECT_FALSE(d.bootstrap.has_value());
+        EXPECT_NE(d.analytical.method.find("Memmel"), std::string::npos);
+
+        // A series against itself: no difference, nothing to reject.
+        const SharpeDifference same = sharpe_difference(a, a, 252.0, 0.95, noBootstrap());
+        EXPECT_NEAR(same.analytical.value, 0.0, 1e-12);
+        EXPECT_NEAR(same.p_value, 1.0, 1e-6);
+
+        EXPECT_THROW(sharpe_difference(a, std::vector<Real>(10, 0.0), 252.0, 0.95, noBootstrap()), Error);
+        EXPECT_THROW(sharpe_difference(a, std::vector<Real>(800, 0.0), 252.0, 0.95, noBootstrap()), Error);
+    }
+
+    // Two Sharpe ratios on the same period are correlated: the more the two
+    // strategies move together, the smaller a difference has to be to count.
+    // Comparing the two intervals one by one would miss it.
+    TEST(SharpeDifference, CorrelationSharpensTheTest)
+    {
+        std::mt19937_64 rng(22);
+        std::vector<Real> a;
+        std::vector<Real> b;
+        correlatedPair(1500, 0.0006, 0.0006, 0.0, rng, a, b);
+        const Real loose = sharpe_difference(a, b, 252.0, 0.95, noBootstrap()).analytical.standard_error;
+        correlatedPair(1500, 0.0006, 0.0006, 0.95, rng, a, b);
+        const Real tight = sharpe_difference(a, b, 252.0, 0.95, noBootstrap()).analytical.standard_error;
+        EXPECT_LT(tight, 0.3 * loose);
+    }
+
+    // Section 16: the empirical size of the test matches its level when the
+    // two Sharpe ratios are equal.
+    TEST(SharpeDifference, HasItsNominalSizeWhenTheSharpeRatiosAreEqual)
+    {
+        std::mt19937_64 rng(23);
+        std::vector<Real> a;
+        std::vector<Real> b;
+        const int draws = 4000;
+        int rejected = 0;
+        for (int draw = 0; draw < draws; ++draw)
+        {
+            correlatedPair(750, 0.0005, 0.0005, 0.7, rng, a, b);
+            rejected += sharpe_difference(a, b, 252.0, 0.95, noBootstrap()).p_value < 0.05 ? 1 : 0;
+        }
+        EXPECT_NEAR(static_cast<Real>(rejected) / draws, 0.05, 0.02);
+    }
+
+    TEST(SharpeDifference, BootstrapHasItsNominalSizeAndSeesARealDifference)
+    {
+        std::mt19937_64 rng(24);
+        std::vector<Real> a;
+        std::vector<Real> b;
+        BootstrapConfig config;
+        config.replications = 300;
+        config.mean_block_length = 1.0;
+        const int draws = 600;
+        int rejected = 0;
+        for (int draw = 0; draw < draws; ++draw)
+        {
+            correlatedPair(500, 0.0005, 0.0005, 0.7, rng, a, b);
+            config.seed = static_cast<std::uint64_t>(draw);
+            const SharpeDifference d = sharpe_difference(a, b, 252.0, 0.95, config);
+            ASSERT_TRUE(d.bootstrap.has_value());
+            rejected += *d.bootstrap_p_value < 0.05 ? 1 : 0;
+            // The interval and the p-value tell the same story, up to the
+            // interpolation between two resampled values at the boundary.
+            const bool excludesZero = d.bootstrap->lower > 0.0 || d.bootstrap->upper < 0.0;
+            if (excludesZero != (*d.bootstrap_p_value < 0.05))
+            {
+                EXPECT_NEAR(*d.bootstrap_p_value, 0.05, 0.01) << "draw " << draw;
+            }
+        }
+        // 600 draws: a sampling error of 0.9 %.
+        EXPECT_NEAR(static_cast<Real>(rejected) / draws, 0.05, 0.03);
+
+        // An annualised difference of about 2.4 between highly correlated
+        // strategies, over six years: seen every time.
+        correlatedPair(1500, 0.0020, 0.0005, 0.9, rng, a, b);
+        config.seed = 1;
+        const SharpeDifference d = sharpe_difference(a, b, 252.0, 0.95, config);
+        EXPECT_LT(d.p_value, 1e-6);
+        EXPECT_LT(*d.bootstrap_p_value, 0.01);
+        EXPECT_GT(d.bootstrap->lower, 0.0);
+        EXPECT_NEAR(d.bootstrap->standard_error, d.analytical.standard_error, 0.25 * d.analytical.standard_error);
     }
 
     // ---- The report ----

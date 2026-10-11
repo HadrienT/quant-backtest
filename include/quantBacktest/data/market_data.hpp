@@ -127,6 +127,10 @@ namespace quantBacktest
         /// True when no universe was given.
         bool in_universe(Index s, Index asset) const;
 
+        /// Simple rate of the period that ends on day s; zero when no rate
+        /// series was given.
+        Real cash_rate(Index s) const;
+
         std::span<const Dividend> dividends() const noexcept { return events_->dividends_through(day_); }
         std::span<const Split> splits() const noexcept { return events_->splits_through(day_); }
         Real split_ratio(Index s, Index asset) const { return events_->split_ratio(checked(s), asset); }
@@ -145,6 +149,7 @@ namespace quantBacktest
         MatrixView low_;
         MatrixView volume_;
         std::span<const std::uint8_t> universe_;
+        std::span<const Real> cash_rate_;
         const EventIndex *events_;
     };
 

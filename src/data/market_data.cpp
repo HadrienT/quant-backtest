@@ -127,6 +127,7 @@ namespace quantBacktest
           low_(market.low.first_rows(day + 1)),
           volume_(market.volume.first_rows(day + 1)),
           universe_(market.universe.empty() ? market.universe : market.universe.first((day + 1) * market.assets)),
+          cash_rate_(market.cash_rate.empty() ? market.cash_rate : market.cash_rate.first(day + 1)),
           events_(&events)
     {
     }
@@ -135,6 +136,12 @@ namespace quantBacktest
     {
         const Index row = checked(s);
         return universe_.empty() || universe_[row * assets_ + asset] != 0;
+    }
+
+    Real MarketView::cash_rate(Index s) const
+    {
+        const Index row = checked(s);
+        return cash_rate_.empty() ? 0.0 : cash_rate_[row];
     }
 
     Index MarketView::checked(Index s) const
