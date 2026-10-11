@@ -11,8 +11,10 @@
 #include "quantBacktest/core/run_control.hpp"
 #include "quantBacktest/costs/cost_model.hpp"
 #include "quantBacktest/costs/spread_estimators.hpp"
+#include "quantBacktest/data/returns.hpp"
 #include "quantBacktest/inference/performance_report.hpp"
 #include "quantBacktest/inference/sharpe_difference.hpp"
+#include "quantBacktest/metrics/cost_report.hpp"
 #include "quantBacktest/risk_models/var_backtest.hpp"
 #include "quantBacktest/validation/cpcv.hpp"
 #include "quantBacktest/validation/overfitting.hpp"
@@ -377,6 +379,82 @@ namespace
         throw qb::Error(std::string("unknown ") + name + " '" + value + "': expected one of " + known);
     }
 
+    // Events: (assets, dates, amounts or ratios), three arrays of one length.
+    void readEvents(const py::object &given, const char *name, std::vector<std::size_t> &assets, std::vector<qb::Date> &when, std::vector<double> &values)
+    {
+        assets.clear();
+        when.clear();
+        values.clear();
+        if (given.is_none())
+        {
+            return;
+        }
+        const py::tuple parts = py::tuple(given);
+        if (parts.size() != 3)
+        {
+            throw qb::Error(std::string("'") + name + "' must be a tuple of three arrays: assets, dates, values");
+        }
+        assets = py::cast<std::vector<std::size_t>>(parts[0]);
+        when = toDates(parts[1], name);
+        values = py::cast<std::vector<double>>(parts[2]);
+        if (assets.size() != when.size() || assets.size() != values.size())
+        {
+            throw qb::Error(std::string("the three arrays of '") + name + "' must have the same length");
+        }
+    }
+
+    std::vector<qb::Dividend> toDividends(const py::object &given)
+    {
+        std::vector<std::size_t> assets;
+        std::vector<qb::Date> when;
+        std::vector<double> values;
+        readEvents(given, "dividends", assets, when, values);
+        std::vector<qb::Dividend> out;
+        for (std::size_t k = 0; k < assets.size(); ++k)
+        {
+            out.push_back({assets[k], when[k], values[k]});
+        }
+        return out;
+    }
+
+    std::vector<qb::Split> toSplits(const py::object &given)
+    {
+        std::vector<std::size_t> assets;
+        std::vector<qb::Date> when;
+        std::vector<double> values;
+        readEvents(given, "splits", assets, when, values);
+        std::vector<qb::Split> out;
+        for (std::size_t k = 0; k < assets.size(); ++k)
+        {
+            out.push_back({assets[k], when[k], values[k]});
+        }
+        return out;
+    }
+
+    py::array_t<double> totalReturns(const py::object &dates, const Array &close, const py::object &dividends, const py::object &splits)
+    {
+        const std::vector<qb::Date> days = toDates(dates, "dates");
+        if (close.ndim() != 2 || static_cast<std::size_t>(close.shape(0)) != days.size())
+        {
+            throw qb::Error("'close' must be a two-dimensional array, one row per date and one column per asset");
+        }
+        const std::vector<qb::Dividend> dividendList = toDividends(dividends);
+        const std::vector<qb::Split> splitList = toSplits(splits);
+        qb::MarketData market;
+        market.dates = days;
+        market.assets = static_cast<std::size_t>(close.shape(1));
+        market.close = {close.data(), days.size(), market.assets};
+        market.dividends = dividendList;
+        market.splits = splitList;
+        return toArray(qb::total_returns(market), days.size(), market.assets);
+    }
+
+    py::array_t<double> periodRates(const py::object &dates, const Array &annualRate, double basis)
+    {
+        const std::vector<qb::Date> days = toDates(dates, "dates");
+        return toArray(qb::period_rates_from_annualized(days, vector(annualRate, "annual_rate"), basis));
+    }
+
     // The parameters are in the order of the py::arg list at the bottom.
     py::dict runAllocation(const py::object &dates, const Array &close,
                            const std::string &method, std::size_t lookback, const py::object &rebalance, double initialCapital, double proportionalCost,
@@ -416,42 +494,8 @@ namespace
             market.cash_rate = vector(*cashRate, "cash_rate");
         }
 
-        // Events: (assets, dates, amounts or ratios), three arrays of one length.
-        const auto events = [](const py::object &given, const char *name, std::vector<std::size_t> &assets, std::vector<qb::Date> &when, std::vector<double> &values)
-        {
-            if (given.is_none())
-            {
-                return;
-            }
-            const py::tuple parts = py::tuple(given);
-            if (parts.size() != 3)
-            {
-                throw qb::Error(std::string("'") + name + "' must be a tuple of three arrays: assets, dates, values");
-            }
-            assets = py::cast<std::vector<std::size_t>>(parts[0]);
-            when = toDates(parts[1], name);
-            values = py::cast<std::vector<double>>(parts[2]);
-            if (assets.size() != when.size() || assets.size() != values.size())
-            {
-                throw qb::Error(std::string("the three arrays of '") + name + "' must have the same length");
-            }
-        };
-        std::vector<std::size_t> eventAssets;
-        std::vector<qb::Date> eventDates;
-        std::vector<double> eventValues;
-        std::vector<qb::Dividend> dividendList;
-        events(dividends, "dividends", eventAssets, eventDates, eventValues);
-        for (std::size_t k = 0; k < eventAssets.size(); ++k)
-        {
-            dividendList.push_back({eventAssets[k], eventDates[k], eventValues[k]});
-        }
-        eventAssets.clear();
-        std::vector<qb::Split> splitList;
-        events(splits, "splits", eventAssets, eventDates, eventValues);
-        for (std::size_t k = 0; k < eventAssets.size(); ++k)
-        {
-            splitList.push_back({eventAssets[k], eventDates[k], eventValues[k]});
-        }
+        const std::vector<qb::Dividend> dividendList = toDividends(dividends);
+        const std::vector<qb::Split> splitList = toSplits(splits);
         market.dividends = dividendList;
         market.splits = splitList;
 
@@ -567,10 +611,20 @@ namespace
         allocations["in_sample_sharpe"] = toArray(inSample);
         allocations["shrinkage"] = toArray(shrinkage);
 
+        // Section 5.2 of the companion: what trading costs the strategy.
+        const qb::CostSummary summary = qb::summarize_costs(runs.strategy, runs.gross ? *runs.gross : runs.strategy, market.cash_rate,
+                                                            startIndex, periodsPerYear, 0.95);
+        py::dict costSummary;
+        costSummary["annualized_turnover"] = summary.annualized_turnover;
+        costSummary["annual_cost_bps"] = summary.annual_cost_bps;
+        costSummary["break_even_cost"] = summary.break_even_cost ? py::object(toDict(*summary.break_even_cost)) : py::object(py::none());
+
         py::dict out;
         out["strategy"] = toDict(runs.strategy);
         out["equal_weight"] = toDict(runs.equal_weight);
         out["buy_and_hold"] = toDict(runs.buy_and_hold);
+        out["gross"] = runs.gross ? py::object(toDict(*runs.gross)) : py::object(py::none());
+        out["cost_summary"] = costSummary;
         out["allocations"] = allocations;
         out["conventions"] = conventions;
         out["quality"] = quality;
@@ -872,6 +926,24 @@ PYBIND11_MODULE(quantbacktest, m)
           "SHA-256 of the given numpy arrays (type, shape and bytes, in order), as 64\n"
           "hexadecimal digits: the fingerprint of the data a run was given.");
 
+    m.def("total_returns", &totalReturns,
+          py::arg("dates"), py::arg("close"),
+          py::kw_only(),
+          py::arg("dividends") = py::none(), py::arg("splits") = py::none(),
+          "Arithmetic total returns from raw closes and corporate actions, one row per date\n"
+          "and one column per asset: s (P[t] + D[t]) / P[t-1] - 1, with s the split ratio\n"
+          "and D the dividend taking effect on day t. The first row is NaN, and so is any\n"
+          "return whose close or previous close is missing.");
+
+    m.def("period_rates", &periodRates,
+          py::arg("dates"), py::arg("annual_rate"),
+          py::kw_only(),
+          py::arg("basis"),
+          "Simple rate of each period from annualised simple rates (as decimals, 0.05 for\n"
+          "5 %): out[t] = annual_rate[t-1] x (dates[t] - dates[t-1] in days) / basis, and\n"
+          "out[0] = 0. The rate of a period is the one known when it starts. basis is the\n"
+          "number of days of the money-market year, 360 for USD.");
+
     m.def("performance_report", &performanceReport,
           py::arg("returns"), py::arg("cash_rate"), py::arg("benchmark") = py::none(),
           py::kw_only(),
@@ -943,10 +1015,12 @@ PYBIND11_MODULE(quantbacktest, m)
           "proportional_cost: fraction of the amount traded (0.0005 = 5 basis points).\n"
           "timing: next_close, next_open or same_close.\n"
           "spread_estimator: None, corwin_schultz or abdi_ranaldo (needs high and low).\n\n"
-          "Returns a dict: strategy, equal_weight, buy_and_hold (each: dates, value, cash,\n"
+          "Returns a dict: strategy, equal_weight, buy_and_hold, and gross (the strategy\n"
+          "without costs; None when it had none), each with dates, value, cash,\n"
           "position_pnl, dividends, interest, costs, traded_notional, turnover,\n"
           "stale_positions, shares, journal), allocations (dates, weights, eligible,\n"
-          "in_sample_sharpe, shrinkage), conventions, quality.");
+          "in_sample_sharpe, shrinkage), cost_summary (annualized_turnover, annual_cost_bps,\n"
+          "break_even_cost), conventions, quality.");
 
 #ifdef QB_HAS_HEDGING
     m.def("fit_minimum_variance_delta", &fitMinimumVarianceDelta,

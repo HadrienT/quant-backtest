@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <set>
 #include <utility>
 
 namespace quantBacktest
@@ -168,6 +169,22 @@ namespace quantBacktest
                 {
                     out.add(QualityCode::EventOffCalendar, Severity::Warning, d.asset, d.ex_date,
                             "an ex-dividend date is not in the calendar; the dividend is applied on the next date");
+                }
+            }
+            // A dividend and a split on the same day are legitimate, and rare.
+            // They are also how a spin-off shows up at sources that count it
+            // twice, once as a dividend and once as a split: the reader checks.
+            std::set<std::pair<Index, Date>> splitDays;
+            for (const Split &s : market.splits)
+            {
+                splitDays.insert({s.asset, s.date});
+            }
+            for (const Dividend &d : market.dividends)
+            {
+                if (d.asset < market.assets && splitDays.count({d.asset, d.ex_date}) != 0)
+                {
+                    out.add(QualityCode::DividendAndSplitSameDay, Severity::Warning, d.asset, d.ex_date,
+                            "a dividend and a split take effect on the same day: check that a spin-off is not counted twice");
                 }
             }
             for (const Split &s : market.splits)

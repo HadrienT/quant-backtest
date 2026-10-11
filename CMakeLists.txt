@@ -55,6 +55,7 @@ add_library(quantBacktest
   src/engine/backtest.cpp
   src/engine/vectorized.cpp
   src/metrics/performance.cpp
+  src/metrics/cost_report.cpp
   src/inference/sharpe_inference.cpp
   src/inference/bootstrap.cpp
   src/inference/performance_report.cpp
