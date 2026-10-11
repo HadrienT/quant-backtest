@@ -832,6 +832,14 @@ Avec 250 jours et $p = 1\,\%$ on attend 2,5 dépassements : ces tests ont peu de
 puissance, d'où l'intérêt de tester aussi à 95 % et de regarder toute la
 distribution (§12.4).
 
+> **Mesuré au lot B7**, sur un modèle exact et au niveau nominal de 5 %. Sur
+> 250 jours à 99 %, le test de Kupiec rejette 10 % du temps et non 5 % : le
+> nombre de dépassements est entier, et n'en observer aucun est déjà un rejet.
+> Le test d'indépendance, lui, ne rejette que 1,7 % du temps, et n'est pas
+> calculable dans 9 % des échantillons, faute de dépassement. Les trois tests
+> retrouvent leurs 5 % sur de grands échantillons (4 000 jours à 80 %). Une
+> p-valeur sur 250 jours se lit donc avec cette réserve.
+
 **Deux P&L.** Le P&L **hypothétique** est celui du portefeuille de la veille,
 figé, revalorisé aux prix du jour ; le P&L **réel** inclut les opérations de
 la journée et les commissions. Le modèle se juge sur le premier : c'est lui
@@ -841,7 +849,8 @@ que la VaR prétend prévoir.
 
 Le superviseur compte les dépassements de la VaR à 99 % un jour sur les 250
 derniers jours ouvrés (Comité de Bâle 1996) et majore le capital en
-conséquence. *Chiffres à revérifier avant de coder.*
+conséquence. *Chiffres revérifiés au lot B7 contre le cadre de 1996 et contre
+MAR33 ; ce sont ceux du code.*
 
 | Zone | Dépassements | Majoration du multiplicateur (Bâle 2,5 : base 3) | Multiplicateur FRTB (base 1,5) |
 |---|---|---|---|
