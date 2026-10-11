@@ -51,7 +51,8 @@ namespace quantBacktest
         RebalanceSchedule schedule = RebalanceSchedule::EveryNDays;
         Index rebalance_every = 21;
         /// Bounds of each weight, held inside the optimisation. Not available
-        /// with risk parity.
+        /// with risk parity. A negative minimum lets the optimiser sell short:
+        /// the run must then allow it (`BacktestConfig::allow_short`).
         Real min_weight = 0.0;
         Real max_weight = 1.0;
         /// Used to annualise the in-sample Sharpe ratio that is recorded.

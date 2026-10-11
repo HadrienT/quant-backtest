@@ -52,6 +52,7 @@ add_library(quantBacktest
   src/quality/quality_report.cpp
   src/costs/spread_estimators.cpp
   src/costs/cost_model.cpp
+  src/costs/impact.cpp
   src/engine/backtest.cpp
   src/engine/vectorized.cpp
   src/metrics/performance.cpp
@@ -64,6 +65,7 @@ add_library(quantBacktest
   src/construction/covariance.cpp
   src/construction/optimizer.cpp
   src/construction/allocation_strategy.cpp
+  src/construction/grid.cpp
   src/risk_models/var_backtest.cpp
   src/validation/validation.cpp
 )

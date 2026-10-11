@@ -539,11 +539,79 @@ namespace quantBacktest
         config.method = AllocationMethod::RiskParity;
         EXPECT_THROW(AllocationStrategy{config}, Error);
         config = allocation(AllocationMethod::MinimumVariance);
-        config.min_weight = -0.1;
+        config.min_weight = -1.5;
         EXPECT_THROW(AllocationStrategy{config}, Error);
         config = allocation(AllocationMethod::MinimumVariance);
         config.lookback = 1;
         EXPECT_THROW(AllocationStrategy{config}, Error);
+    }
+
+    // A negative lower bound lets the optimiser sell short. The run must
+    // allow it, and the data must say what borrowing the shares costs.
+    TEST(AllocationStrategy, ShortPositionsNeedTheRunToAllowThem)
+    {
+        testing::SyntheticMarket m = testing::makeMarket(260, 6, 41, {.dividends = false, .annualRate = 0.0});
+        // Asset 1 moves like asset 0 with one and a half times the leverage:
+        // selling it against asset 0 removes risk, which minimum variance
+        // does as soon as it may.
+        std::mt19937_64 rng(2);
+        std::normal_distribution<Real> normal(0.0, 1.0);
+        Real price = 80.0;
+        for (Index t = 0; t < m.days; ++t)
+        {
+            if (t > 0)
+            {
+                price *= 1.0 + 1.5 * (m.close[m.at(t, 0)] / m.close[m.at(t - 1, 0)] - 1.0) + 0.001 * normal(rng);
+            }
+            for (std::vector<Real> *table : {&m.open, &m.high, &m.low, &m.close})
+            {
+                (*table)[m.at(t, 1)] = price;
+            }
+        }
+        AllocationConfig config = allocation(AllocationMethod::MinimumVariance);
+        config.min_weight = -0.3;
+        config.max_weight = 0.6;
+        {
+            AllocationStrategy strategy(config);
+            EXPECT_THROW(run_backtest(m.data(), strategy, backtest()), Error);
+        }
+        BacktestConfig allowed = backtest();
+        allowed.allow_short = true;
+        {
+            // Allowed, but no borrow rate given: refused.
+            AllocationStrategy strategy(config);
+            EXPECT_THROW(run_backtest(m.data(), strategy, allowed), Error);
+        }
+        const std::vector<Real> borrow(m.days, 0.01 / 252.0);
+        MarketData data = m.data();
+        data.borrow_rate = borrow;
+        AllocationStrategy strategy(config);
+        const BacktestResult r = run_backtest(data, strategy, allowed);
+        bool shorted = false;
+        Real fees = 0.0;
+        for (const AllocationRecord &record : strategy.history())
+        {
+            EXPECT_NEAR(sum(record.weights), 1.0, 1e-12);
+            for (const Real w : record.weights)
+            {
+                EXPECT_GE(w, -0.3);
+                EXPECT_LE(w, 0.6);
+                shorted |= w < 0.0;
+            }
+        }
+        for (const Real fee : r.borrow_cost)
+        {
+            EXPECT_GE(fee, 0.0);
+            fees += fee;
+        }
+        EXPECT_TRUE(shorted);
+        EXPECT_GT(fees, 0.0);
+        // A wider set of portfolios cannot have more variance in-sample.
+        AllocationConfig longOnly = config;
+        longOnly.min_weight = 0.0;
+        AllocationStrategy reference(longOnly);
+        run_backtest(m.data(), reference, backtest());
+        EXPECT_NE(strategy.history().front().weights, reference.history().front().weights);
     }
 
     // With more assets than periods the sample covariance is refused, with

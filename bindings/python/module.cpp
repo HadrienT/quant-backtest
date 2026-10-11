@@ -5,11 +5,13 @@
 
 #include "quantBacktest/attribution/factor_regression.hpp"
 #include "quantBacktest/construction/allocation_strategy.hpp"
+#include "quantBacktest/construction/grid.hpp"
 #include "quantBacktest/core/build_info.hpp"
 #include "quantBacktest/core/error.hpp"
 #include "quantBacktest/core/fingerprint.hpp"
 #include "quantBacktest/core/run_control.hpp"
 #include "quantBacktest/costs/cost_model.hpp"
+#include "quantBacktest/costs/impact.hpp"
 #include "quantBacktest/costs/spread_estimators.hpp"
 #include "quantBacktest/data/returns.hpp"
 #include "quantBacktest/inference/performance_report.hpp"
@@ -324,6 +326,7 @@ namespace
         out["dividends"] = toArray(r.dividends);
         out["interest"] = toArray(r.interest);
         out["costs"] = toArray(r.costs);
+        out["borrow_cost"] = toArray(r.borrow_cost);
         out["traded_notional"] = toArray(r.traded_notional);
         out["turnover"] = toArray(r.turnover);
         out["stale_positions"] = py::array_t<std::uint64_t>(static_cast<py::ssize_t>(days), r.stale_positions.data());
@@ -455,50 +458,126 @@ namespace
         return toArray(qb::period_rates_from_annualized(days, vector(annualRate, "annual_rate"), basis));
     }
 
-    // The parameters are in the order of the py::arg list at the bottom.
-    py::dict runAllocation(const py::object &dates, const Array &close,
-                           const std::string &method, std::size_t lookback, const py::object &rebalance, double initialCapital, double proportionalCost,
-                           const std::optional<Array> &open, const std::optional<Array> &high, const std::optional<Array> &low, const std::optional<Array> &volume,
-                           const std::optional<py::array_t<bool, py::array::c_style | py::array::forcecast>> &universe,
-                           const std::optional<Array> &cashRate, const py::object &dividends, const py::object &splits,
-                           const std::string &covariance, bool expanding, double minWeight, double maxWeight,
-                           const std::string &timing, std::size_t extraLagDays, std::size_t startIndex, bool allowBorrowing,
-                           const py::object &spreadEstimator, std::size_t spreadWindow, std::size_t spreadMinPairs,
-                           double periodsPerYear, const Callback &progress, const Callback &cancel)
+    using Members = std::optional<py::array_t<bool, py::array::c_style | py::array::forcecast>>;
+
+    // Everything a strategy backtest shares with a grid of them: the market,
+    // the costs and the execution rules. It holds pointers into itself and
+    // into the arrays it was given: built in place, never copied.
+    struct Setup
     {
-        const std::vector<qb::Date> days = toDates(dates, "dates");
-        if (close.ndim() != 2)
-        {
-            throw qb::Error("'close' must be a two-dimensional array, one row per date and one column per asset");
-        }
-        qb::MarketData market;
-        market.dates = days;
-        market.assets = static_cast<std::size_t>(close.shape(1));
-        market.close = {close.data(), static_cast<std::size_t>(close.shape(0)), market.assets};
-        market.open = table(open, "open");
-        market.high = table(high, "high");
-        market.low = table(low, "low");
-        market.volume = table(volume, "volume");
+        std::vector<qb::Date> days;
         std::vector<std::uint8_t> members;
-        if (universe)
+        std::vector<qb::Dividend> dividends;
+        std::vector<qb::Split> splits;
+        qb::MarketData market;
+
+        std::optional<qb::ProportionalCost> proportional;
+        std::vector<double> spreads;
+        std::vector<double> volatility;
+        std::vector<double> dollarVolume;
+        std::unique_ptr<qb::SpreadCost> spread;
+        std::unique_ptr<qb::SquareRootImpactCost> impact;
+        std::unique_ptr<qb::CostStack> stack;
+        qb::BacktestConfig backtest;
+
+        Setup(const Setup &) = delete;
+        Setup &operator=(const Setup &) = delete;
+
+        Setup(const py::object &dates, const Array &close,
+              const std::optional<Array> &open, const std::optional<Array> &high, const std::optional<Array> &low, const std::optional<Array> &volume,
+              const Members &universe, const std::optional<Array> &cashRate, const std::optional<Array> &borrowRate,
+              const py::object &dividendEvents, const py::object &splitEvents,
+              double initialCapital, double proportionalCost,
+              const std::string &timing, std::size_t extraLagDays, std::size_t startIndex, bool allowBorrowing, bool allowShort, bool wholeShares,
+              const py::object &spreadEstimator, std::size_t spreadWindow, std::size_t spreadMinPairs,
+              const py::object &impactCoefficient, std::size_t impactWindow)
+            : days(toDates(dates, "dates")), dividends(toDividends(dividendEvents)), splits(toSplits(splitEvents))
         {
-            if (universe->ndim() != 2)
+            if (close.ndim() != 2 || static_cast<std::size_t>(close.shape(0)) != days.size())
             {
-                throw qb::Error("'universe' must be a two-dimensional array, one row per date and one column per asset");
+                throw qb::Error("'close' must be a two-dimensional array, one row per date and one column per asset");
             }
-            members.assign(universe->data(), universe->data() + universe->size());
-            market.universe = members;
-        }
-        if (cashRate)
-        {
-            market.cash_rate = vector(*cashRate, "cash_rate");
-        }
+            market.dates = days;
+            market.assets = static_cast<std::size_t>(close.shape(1));
+            market.close = {close.data(), days.size(), market.assets};
+            market.open = table(open, "open");
+            market.high = table(high, "high");
+            market.low = table(low, "low");
+            market.volume = table(volume, "volume");
+            if (universe)
+            {
+                if (universe->ndim() != 2)
+                {
+                    throw qb::Error("'universe' must be a two-dimensional array, one row per date and one column per asset");
+                }
+                members.assign(universe->data(), universe->data() + universe->size());
+                market.universe = members;
+            }
+            if (cashRate)
+            {
+                market.cash_rate = vector(*cashRate, "cash_rate");
+            }
+            if (borrowRate)
+            {
+                market.borrow_rate = vector(*borrowRate, "borrow_rate");
+            }
+            market.dividends = dividends;
+            market.splits = splits;
 
-        const std::vector<qb::Dividend> dividendList = toDividends(dividends);
-        const std::vector<qb::Split> splitList = toSplits(splits);
-        market.dividends = dividendList;
-        market.splits = splitList;
+            // Costs: a proportional rate, plus half an estimated spread and
+            // a square-root impact if asked.
+            proportional.emplace(proportionalCost);
+            std::vector<const qb::CostModel *> models{&*proportional};
+            if (!spreadEstimator.is_none())
+            {
+                const auto estimator = choose<qb::SpreadEstimator>(py::cast<std::string>(spreadEstimator), "spread_estimator",
+                                                                   {{"corwin_schultz", qb::SpreadEstimator::CorwinSchultz}, {"abdi_ranaldo", qb::SpreadEstimator::AbdiRanaldo}});
+                spreads = qb::estimated_spreads(market, estimator, spreadWindow, spreadMinPairs);
+                spread = std::make_unique<qb::SpreadCost>(qb::MatrixView{spreads.data(), days.size(), market.assets},
+                                                          (estimator == qb::SpreadEstimator::CorwinSchultz ? "Corwin and Schultz (2012)" : "Abdi and Ranaldo (2017)") +
+                                                              std::string(", estimated over the ") + std::to_string(spreadWindow) + " days before the execution");
+                models.push_back(spread.get());
+            }
+            // The traded amount of each day, whenever volumes are given: the
+            // impact cost needs it, and so does the share of volume traded.
+            const std::size_t minimum = std::max<std::size_t>(2, impactWindow / 2);
+            if (!market.volume.empty())
+            {
+                dollarVolume = qb::trailing_dollar_volume(market, impactWindow, minimum);
+            }
+            if (!impactCoefficient.is_none())
+            {
+                if (dollarVolume.empty())
+                {
+                    throw qb::Error("'impact_coefficient' needs the 'volume' table");
+                }
+                volatility = qb::trailing_volatility(market, impactWindow, minimum);
+                impact = std::make_unique<qb::SquareRootImpactCost>(qb::MatrixView{volatility.data(), days.size(), market.assets},
+                                                                    qb::MatrixView{dollarVolume.data(), days.size(), market.assets},
+                                                                    py::cast<double>(impactCoefficient));
+                models.push_back(impact.get());
+            }
+            stack = std::make_unique<qb::CostStack>(models);
 
+            backtest.initial_capital = initialCapital;
+            backtest.timing = choose<qb::ExecutionTiming>(timing, "timing",
+                                                          {{"next_close", qb::ExecutionTiming::NextClose},
+                                                           {"next_open", qb::ExecutionTiming::NextOpen},
+                                                           {"same_close", qb::ExecutionTiming::SameClose}});
+            backtest.extra_lag_days = extraLagDays;
+            backtest.start_index = startIndex;
+            backtest.allow_borrowing = allowBorrowing;
+            backtest.allow_short = allowShort;
+            backtest.whole_shares = wholeShares;
+            // A zero rate and nothing else is "no cost": said as such in the
+            // conventions, and refused by the engine at the signal's own close.
+            backtest.costs = proportionalCost == 0.0 && !spread && !impact ? nullptr : stack.get();
+        }
+    };
+
+    qb::AllocationConfig toAllocation(const std::string &method, std::size_t lookback, const py::object &rebalance, const std::string &covariance,
+                                      bool expanding, double minWeight, double maxWeight, double periodsPerYear)
+    {
         qb::AllocationConfig allocation;
         allocation.method = choose<qb::AllocationMethod>(method, "method",
                                                          {{"equal_weight", qb::AllocationMethod::EqualWeight},
@@ -525,41 +604,86 @@ namespace
         allocation.min_weight = minWeight;
         allocation.max_weight = maxWeight;
         allocation.periods_per_year = periodsPerYear;
+        return allocation;
+    }
 
-        // Costs: a proportional rate, plus half an estimated spread if asked.
-        const qb::ProportionalCost proportional(proportionalCost);
-        std::vector<const qb::CostModel *> models{&proportional};
-        std::vector<double> spreads;
-        std::unique_ptr<qb::SpreadCost> spread;
-        if (!spreadEstimator.is_none())
+    // One entry of a grid: {"method", "lookback", "rebalance"} and, optional,
+    // "covariance", "expanding", "min_weight", "max_weight".
+    qb::AllocationConfig toAllocation(const py::dict &entry, double periodsPerYear)
+    {
+        static const char *const known[] = {"method", "lookback", "rebalance", "covariance", "expanding", "min_weight", "max_weight"};
+        for (const auto &item : entry)
         {
-            const std::string name = py::cast<std::string>(spreadEstimator);
-            const auto estimator = choose<qb::SpreadEstimator>(name, "spread_estimator",
-                                                               {{"corwin_schultz", qb::SpreadEstimator::CorwinSchultz}, {"abdi_ranaldo", qb::SpreadEstimator::AbdiRanaldo}});
-            if (market.close.rows() != days.size())
+            const std::string key = py::cast<std::string>(item.first);
+            if (std::find(std::begin(known), std::end(known), key) == std::end(known))
             {
-                throw qb::Error("the 'close' table must have one row per date");
+                throw qb::Error("unknown key '" + key + "' in a configuration of the grid");
             }
-            spreads = qb::estimated_spreads(market, estimator, spreadWindow, spreadMinPairs);
-            spread = std::make_unique<qb::SpreadCost>(qb::MatrixView{spreads.data(), days.size(), market.assets},
-                                                      (estimator == qb::SpreadEstimator::CorwinSchultz ? "Corwin and Schultz (2012)" : "Abdi and Ranaldo (2017)") +
-                                                          std::string(", estimated over the ") + std::to_string(spreadWindow) + " days before the execution");
-            models.push_back(spread.get());
         }
-        const qb::CostStack costs(models);
+        for (const char *required : {"method", "lookback", "rebalance"})
+        {
+            if (!entry.contains(required))
+            {
+                throw qb::Error(std::string("a configuration of the grid needs the key '") + required + "'");
+            }
+        }
+        return toAllocation(py::cast<std::string>(entry["method"]), py::cast<std::size_t>(entry["lookback"]), entry["rebalance"],
+                            entry.contains("covariance") ? py::cast<std::string>(entry["covariance"]) : std::string("ledoit_wolf"),
+                            entry.contains("expanding") && py::cast<bool>(entry["expanding"]),
+                            entry.contains("min_weight") ? py::cast<double>(entry["min_weight"]) : 0.0,
+                            entry.contains("max_weight") ? py::cast<double>(entry["max_weight"]) : 1.0, periodsPerYear);
+    }
 
-        qb::BacktestConfig backtest;
-        backtest.initial_capital = initialCapital;
-        backtest.timing = choose<qb::ExecutionTiming>(timing, "timing",
-                                                      {{"next_close", qb::ExecutionTiming::NextClose},
-                                                       {"next_open", qb::ExecutionTiming::NextOpen},
-                                                       {"same_close", qb::ExecutionTiming::SameClose}});
-        backtest.extra_lag_days = extraLagDays;
-        backtest.start_index = startIndex;
-        backtest.allow_borrowing = allowBorrowing;
-        // A zero rate and no spread is "no cost": said as such in the
-        // conventions, and refused by the engine at the signal's own close.
-        backtest.costs = proportionalCost == 0.0 && !spread ? nullptr : &costs;
+    // The parameters are in the order of the py::arg list at the bottom.
+    py::dict runAllocationGrid(const py::object &dates, const Array &close, const py::list &grid, double initialCapital, double proportionalCost,
+                               const std::optional<Array> &open, const std::optional<Array> &high, const std::optional<Array> &low, const std::optional<Array> &volume,
+                               const Members &universe, const std::optional<Array> &cashRate, const std::optional<Array> &borrowRate,
+                               const py::object &dividends, const py::object &splits,
+                               const std::string &timing, std::size_t extraLagDays, std::size_t startIndex, bool allowBorrowing, bool allowShort, bool wholeShares,
+                               const py::object &spreadEstimator, std::size_t spreadWindow, std::size_t spreadMinPairs,
+                               const py::object &impactCoefficient, std::size_t impactWindow,
+                               double periodsPerYear, std::size_t threads, const Callback &progress, const Callback &cancel)
+    {
+        const Setup setup(dates, close, open, high, low, volume, universe, cashRate, borrowRate, dividends, splits, initialCapital, proportionalCost,
+                          timing, extraLagDays, startIndex, allowBorrowing, allowShort, wholeShares, spreadEstimator, spreadWindow, spreadMinPairs,
+                          impactCoefficient, impactWindow);
+        std::vector<qb::AllocationConfig> configurations;
+        for (const py::handle &entry : grid)
+        {
+            configurations.push_back(toAllocation(py::cast<py::dict>(entry), periodsPerYear));
+        }
+        const Control control(progress, cancel);
+        qb::GridResult result;
+        {
+            const py::gil_scoped_release release;
+            result = qb::run_allocation_grid(setup.market, configurations, setup.backtest, threads, control.get());
+        }
+        py::dict out;
+        out["dates"] = fromDates(result.dates);
+        out["returns"] = toArray(result.returns, result.dates.size(), result.configurations);
+        out["descriptions"] = result.descriptions;
+        out["final_values"] = toArray(result.final_values);
+        return out;
+    }
+
+    // The parameters are in the order of the py::arg list at the bottom.
+    py::dict runAllocation(const py::object &dates, const Array &close,
+                           const std::string &method, std::size_t lookback, const py::object &rebalance, double initialCapital, double proportionalCost,
+                           const std::optional<Array> &open, const std::optional<Array> &high, const std::optional<Array> &low, const std::optional<Array> &volume,
+                           const Members &universe, const std::optional<Array> &cashRate, const std::optional<Array> &borrowRate,
+                           const py::object &dividends, const py::object &splits,
+                           const std::string &covariance, bool expanding, double minWeight, double maxWeight,
+                           const std::string &timing, std::size_t extraLagDays, std::size_t startIndex, bool allowBorrowing, bool allowShort, bool wholeShares,
+                           const py::object &spreadEstimator, std::size_t spreadWindow, std::size_t spreadMinPairs,
+                           const py::object &impactCoefficient, std::size_t impactWindow,
+                           double periodsPerYear, const Callback &progress, const Callback &cancel)
+    {
+        const Setup setup(dates, close, open, high, low, volume, universe, cashRate, borrowRate, dividends, splits, initialCapital, proportionalCost,
+                          timing, extraLagDays, startIndex, allowBorrowing, allowShort, wholeShares, spreadEstimator, spreadWindow, spreadMinPairs,
+                          impactCoefficient, impactWindow);
+        const qb::MarketData &market = setup.market;
+        const qb::BacktestConfig &backtest = setup.backtest;
+        const qb::AllocationConfig allocation = toAllocation(method, lookback, rebalance, covariance, expanding, minWeight, maxWeight, periodsPerYear);
 
         const Control control(progress, cancel);
         qb::ComparedRuns runs;
@@ -618,6 +742,20 @@ namespace
         costSummary["annualized_turnover"] = summary.annualized_turnover;
         costSummary["annual_cost_bps"] = summary.annual_cost_bps;
         costSummary["break_even_cost"] = summary.break_even_cost ? py::object(toDict(*summary.break_even_cost)) : py::object(py::none());
+        if (setup.dollarVolume.empty())
+        {
+            costSummary["participation"] = py::none();
+        }
+        else
+        {
+            // Share of the daily traded amount taken by the executions.
+            const qb::Participation share = qb::participation(runs.strategy, {setup.dollarVolume.data(), setup.days.size(), market.assets}, setup.days);
+            py::dict participation;
+            participation["executions"] = share.executions;
+            participation["maximum"] = share.maximum;
+            participation["median"] = share.median;
+            costSummary["participation"] = participation;
+        }
 
         py::dict out;
         out["strategy"] = toDict(runs.strategy);
@@ -997,11 +1135,13 @@ PYBIND11_MODULE(quantbacktest, m)
           py::kw_only(),
           py::arg("method"), py::arg("lookback"), py::arg("rebalance"), py::arg("initial_capital"), py::arg("proportional_cost"),
           py::arg("open") = py::none(), py::arg("high") = py::none(), py::arg("low") = py::none(), py::arg("volume") = py::none(),
-          py::arg("universe") = py::none(), py::arg("cash_rate") = py::none(),
+          py::arg("universe") = py::none(), py::arg("cash_rate") = py::none(), py::arg("borrow_rate") = py::none(),
           py::arg("dividends") = py::none(), py::arg("splits") = py::none(),
           py::arg("covariance") = "ledoit_wolf", py::arg("expanding") = false, py::arg("min_weight") = 0.0, py::arg("max_weight") = 1.0,
           py::arg("timing") = "next_close", py::arg("extra_lag_days") = 0, py::arg("start_index") = 0, py::arg("allow_borrowing") = false,
+          py::arg("allow_short") = false, py::arg("whole_shares") = false,
           py::arg("spread_estimator") = py::none(), py::arg("spread_window") = 21, py::arg("spread_min_pairs") = 10,
+          py::arg("impact_coefficient") = py::none(), py::arg("impact_window") = 21,
           py::arg("periods_per_year") = 252.0, py::arg("progress") = py::none(), py::arg("cancel") = py::none(),
           "Backtest of an allocation strategy on raw daily data, with its comparison points.\n\n"
           "dates: datetime64 array, strictly increasing. close, open, high, low, volume: raw\n"
@@ -1014,13 +1154,16 @@ PYBIND11_MODULE(quantbacktest, m)
           "rebalance: days, or 'monthly'.\n"
           "proportional_cost: fraction of the amount traded (0.0005 = 5 basis points).\n"
           "timing: next_close, next_open or same_close.\n"
-          "spread_estimator: None, corwin_schultz or abdi_ranaldo (needs high and low).\n\n"
+          "spread_estimator: None, corwin_schultz or abdi_ranaldo (needs high and low).\n"
+          "impact_coefficient: None, or Y of the square-root impact (needs volume).\n"
+          "allow_short: negative weights (min_weight < 0), with borrow_rate, the fee of each\n"
+          "    period on the shares borrowed. whole_shares: orders rounded towards zero.\n\n"
           "Returns a dict: strategy, equal_weight, buy_and_hold, and gross (the strategy\n"
           "without costs; None when it had none), each with dates, value, cash,\n"
           "position_pnl, dividends, interest, costs, traded_notional, turnover,\n"
           "stale_positions, shares, journal), allocations (dates, weights, eligible,\n"
           "in_sample_sharpe, shrinkage), cost_summary (annualized_turnover, annual_cost_bps,\n"
-          "break_even_cost), conventions, quality.");
+          "break_even_cost, participation), conventions, quality.");
 
 #ifdef QB_HAS_HEDGING
     m.def("fit_minimum_variance_delta", &fitMinimumVarianceDelta,
@@ -1093,6 +1236,27 @@ PYBIND11_MODULE(quantbacktest, m)
           "(Bailey, Borwein, Lopez de Prado and Zhu 2017); `blocks` is even, at most 20.\n\n"
           "Returns a dict: probability, splits, logits (one per split), and the champion's\n"
           "mean_in_sample_sharpe and mean_out_of_sample_sharpe (annualised).");
+
+    m.def("run_allocation_grid", &runAllocationGrid,
+          py::arg("dates"), py::arg("close"),
+          py::kw_only(),
+          py::arg("grid"), py::arg("initial_capital"), py::arg("proportional_cost"),
+          py::arg("open") = py::none(), py::arg("high") = py::none(), py::arg("low") = py::none(), py::arg("volume") = py::none(),
+          py::arg("universe") = py::none(), py::arg("cash_rate") = py::none(), py::arg("borrow_rate") = py::none(),
+          py::arg("dividends") = py::none(), py::arg("splits") = py::none(),
+          py::arg("timing") = "next_close", py::arg("extra_lag_days") = 0, py::arg("start_index") = 0, py::arg("allow_borrowing") = false,
+          py::arg("allow_short") = false, py::arg("whole_shares") = false,
+          py::arg("spread_estimator") = py::none(), py::arg("spread_window") = 21, py::arg("spread_min_pairs") = 10,
+          py::arg("impact_coefficient") = py::none(), py::arg("impact_window") = 21,
+          py::arg("periods_per_year") = 252.0, py::arg("threads") = 1, py::arg("progress") = py::none(), py::arg("cancel") = py::none(),
+          "One backtest per configuration, on the same data, costs and execution rules.\n\n"
+          "grid: list of dicts, each with method, lookback, rebalance and, optional,\n"
+          "    covariance, expanding, min_weight, max_weight. Every configuration tried\n"
+          "    belongs in it: the number of columns is the number of trials.\n"
+          "The other arguments are those of run_allocation.\n\n"
+          "Returns a dict: dates, returns (one row per date, one column per configuration:\n"
+          "the table walk_forward, combinatorial_purged_cv, deflated_sharpe and\n"
+          "backtest_overfitting take), descriptions, final_values.");
 
     m.def("factor_regression", &factorRegression,
           py::arg("excess"), py::arg("factors"),

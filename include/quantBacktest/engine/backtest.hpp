@@ -42,6 +42,14 @@ namespace quantBacktest
         /// If false, purchases are scaled down so that cash never goes
         /// negative. If true, a negative balance pays the debit rate.
         bool allow_borrowing = false;
+        /// If true, a position can be negative: the proceeds of the sale go to
+        /// cash, the dividends detached are paid, and the value of the shares
+        /// borrowed pays `borrow_rate`, which the data must then hold.
+        bool allow_short = false;
+        /// If true, every order is rounded towards zero to a whole number of
+        /// shares; what it does not spend stays in cash. A split can still
+        /// leave a fraction of a share.
+        bool whole_shares = false;
         /// Not owned; null means no transaction cost.
         const CostModel *costs = nullptr;
         QualityThresholds quality;
@@ -96,7 +104,7 @@ namespace quantBacktest
     /// Each day:
     ///
     ///     value = cash + sum of shares x last known close
-    ///     value - previous value = position_pnl + dividends + interest - costs
+    ///     value - previous value = position_pnl + dividends + interest - costs - borrow_cost
     ///
     /// On the first day the previous value is the initial capital.
     struct BacktestResult
@@ -108,6 +116,8 @@ namespace quantBacktest
         std::vector<Real> dividends;
         std::vector<Real> interest;
         std::vector<Real> costs;
+        /// Fee paid on the shares borrowed for the short positions.
+        std::vector<Real> borrow_cost;
         /// Sum of |quantity| x price over the day's executions.
         std::vector<Real> traded_notional;
         /// Half the traded notional over the portfolio value at execution.
@@ -128,8 +138,8 @@ namespace quantBacktest
     ///
     /// Throws `Error` if the data fail the quality controls, if the
     /// configuration is inconsistent, or if the strategy asks for something
-    /// the engine does not do (a short position, an asset outside the
-    /// universe); `Cancelled` if `control.cancel` is raised.
+    /// the engine was not allowed to do (a short position, an asset outside
+    /// the universe); `Cancelled` if `control.cancel` is raised.
     BacktestResult run_backtest(const MarketData &market, Strategy &strategy, const BacktestConfig &config, const RunControl &control = {});
 
 } // namespace quantBacktest

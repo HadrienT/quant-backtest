@@ -1,12 +1,16 @@
 #include <gtest/gtest.h>
 
+#include "quantBacktest/construction/grid.hpp"
 #include "quantBacktest/core/error.hpp"
+#include "quantBacktest/costs/cost_model.hpp"
 #include "quantBacktest/core/estimate.hpp"
 #include "quantBacktest/inference/sharpe_inference.hpp"
 #include "quantBacktest/metrics/performance.hpp"
 #include "quantBacktest/validation/cpcv.hpp"
 #include "quantBacktest/validation/overfitting.hpp"
 #include "quantBacktest/validation/walk_forward.hpp"
+
+#include "support/synthetic_market.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -451,6 +455,90 @@ namespace quantBacktest
         EXPECT_THROW(probability_of_backtest_overfitting({returns.data(), 4, 3}, 22), Error);
         EXPECT_THROW(probability_of_backtest_overfitting({returns.data(), 4, 3}, 4), Error);
         EXPECT_THROW(probability_of_backtest_overfitting({returns.data(), 12, 1}, 2), Error);
+    }
+
+    // ---- The grid of configurations ----
+
+    namespace
+    {
+
+        std::vector<AllocationConfig> grid()
+        {
+            std::vector<AllocationConfig> configurations;
+            for (const AllocationMethod method : {AllocationMethod::EqualWeight, AllocationMethod::MinimumVariance, AllocationMethod::RiskParity})
+            {
+                for (const Index lookback : {Index{40}, Index{80}})
+                {
+                    AllocationConfig c;
+                    c.method = method;
+                    c.lookback = lookback;
+                    c.rebalance_every = 20;
+                    configurations.push_back(c);
+                }
+            }
+            return configurations;
+        }
+
+    } // namespace
+
+    // Each column of the grid is the backtest of its configuration, whatever
+    // the number of threads.
+    TEST(AllocationGrid, EachColumnIsItsOwnBacktest)
+    {
+        const testing::SyntheticMarket m = testing::makeMarket(300, 6, 50);
+        const ProportionalCost cost(0.0005);
+        BacktestConfig backtest;
+        backtest.initial_capital = 1e6;
+        backtest.costs = &cost;
+        const std::vector<AllocationConfig> configurations = grid();
+        const GridResult one = run_allocation_grid(m.data(), configurations, backtest, 1);
+        ASSERT_EQ(one.configurations, 6u);
+        ASSERT_EQ(one.dates.size(), m.days - 1);
+        EXPECT_EQ(one.dates.front(), m.dates[1]);
+        for (Index k = 0; k < configurations.size(); ++k)
+        {
+            AllocationStrategy strategy(configurations[k]);
+            const BacktestResult r = run_backtest(m.data(), strategy, backtest);
+            for (Index t = 0; t + 1 < m.days; ++t)
+            {
+                ASSERT_EQ(one.returns[t * 6 + k], r.value[t + 1] / r.value[t] - 1.0);
+            }
+            EXPECT_EQ(one.final_values[k], r.value.back());
+            EXPECT_EQ(one.descriptions[k], strategy.describe());
+        }
+        for (const Index threads : {Index{2}, Index{6}, Index{32}})
+        {
+            EXPECT_EQ(run_allocation_grid(m.data(), configurations, backtest, threads).returns, one.returns);
+        }
+
+        // The table is the input of the validation.
+        const WalkForwardResult wf = walk_forward(one.view(), {120, 30, false, 252.0});
+        EXPECT_EQ(wf.returns.size(), m.days - 1 - 120);
+        EXPECT_NO_THROW(deflated_sharpe_of_best(one.view()));
+        EXPECT_NO_THROW(probability_of_backtest_overfitting(one.view(), 6));
+    }
+
+    TEST(AllocationGrid, AFailingConfigurationFailsTheGridAndNamesItself)
+    {
+        const testing::SyntheticMarket m = testing::makeMarket(150, 4, 51);
+        BacktestConfig backtest;
+        backtest.initial_capital = 1e6;
+        std::vector<AllocationConfig> configurations = grid();
+        configurations[3].max_weight = 0.2;
+        try
+        {
+            run_allocation_grid(m.data(), configurations, backtest, 4);
+            FAIL() << "an infeasible configuration passed";
+        }
+        catch (const Error &error)
+        {
+            EXPECT_NE(std::string(error.what()).find("configuration 3"), std::string::npos);
+            EXPECT_NE(std::string(error.what()).find("infeasible"), std::string::npos);
+        }
+        EXPECT_THROW(run_allocation_grid(m.data(), {}, backtest, 1), Error);
+        testing::SyntheticMarket bad = m;
+        bad.close[5] = -1.0;
+        EXPECT_THROW(run_allocation_grid(bad.data(), grid(), backtest, 1), Error);
     }
 
 } // namespace quantBacktest

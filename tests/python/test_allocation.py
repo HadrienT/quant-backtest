@@ -221,3 +221,124 @@ def test_total_returns_and_period_rates():
         qb.period_rates(dates, annual)
     with pytest.raises(qb.Error):
         qb.period_rates(dates, annual[:2], basis=360.0)
+
+
+def test_short_positions_whole_shares_and_impact():
+    dates, close, open_, high, low, cash = market()
+    rng = np.random.default_rng(5)
+    volume = rng.uniform(1e5, 1e6, close.shape)
+    # Asset 1 is a leveraged copy of asset 0: worth selling against it.
+    returns0 = np.diff(close[:, 0]) / close[:-1, 0]
+    close[1:, 1] = close[0, 1] * np.cumprod(1.0 + 1.5 * returns0)
+    kwargs = dict(
+        method="minimum_variance",
+        lookback=60,
+        rebalance=20,
+        initial_capital=1e6,
+        proportional_cost=0.0005,
+        cash_rate=cash,
+        volume=volume,
+    )
+    with pytest.raises(qb.Error, match="not allowed"):
+        qb.run_allocation(dates, close, min_weight=-0.3, max_weight=0.6, **kwargs)
+    with pytest.raises(qb.Error, match="borrow_rate"):
+        qb.run_allocation(
+            dates, close, min_weight=-0.3, max_weight=0.6, allow_short=True, **kwargs
+        )
+    borrow = np.full(len(dates), 0.02 / 252.0)
+    result = qb.run_allocation(
+        dates,
+        close,
+        min_weight=-0.3,
+        max_weight=0.6,
+        allow_short=True,
+        borrow_rate=borrow,
+        whole_shares=True,
+        impact_coefficient=1.0,
+        **kwargs,
+    )
+    assert result["allocations"]["weights"].min() < 0
+    run = result["strategy"]
+    assert run["shares"].min() < 0
+    assert run["borrow_cost"].sum() > 0
+    assert (run["journal"]["quantity"] == np.trunc(run["journal"]["quantity"])).all()
+    change = np.diff(run["value"])
+    explained = (
+        run["position_pnl"]
+        + run["dividends"]
+        + run["interest"]
+        - run["costs"]
+        - run["borrow_cost"]
+    )[1:]
+    assert np.allclose(change, explained, rtol=0, atol=1e-6)
+    assert "square-root market impact" in result["conventions"]["costs"]
+    share = result["cost_summary"]["participation"]
+    assert share["executions"] > 0
+    assert 0 < share["median"] <= share["maximum"]
+
+    with pytest.raises(qb.Error, match="volume"):
+        qb.run_allocation(
+            dates,
+            close,
+            method="equal_weight",
+            lookback=60,
+            rebalance=20,
+            initial_capital=1e6,
+            proportional_cost=0.0,
+            impact_coefficient=1.0,
+        )
+    _, plain = run_default()
+    assert plain["cost_summary"]["participation"] is None
+
+
+def run_default():
+    return run()
+
+
+def test_grid_is_the_table_the_validation_takes():
+    dates, close, open_, high, low, cash = market()
+    grid = [
+        {"method": method, "lookback": lookback, "rebalance": 20}
+        for method in ("equal_weight", "minimum_variance", "risk_parity")
+        for lookback in (40, 80)
+    ]
+    grid.append(
+        {
+            "method": "minimum_variance",
+            "lookback": 60,
+            "rebalance": "monthly",
+            "max_weight": 0.3,
+            "expanding": True,
+            "covariance": "sample",
+        }
+    )
+    common = dict(initial_capital=1e6, proportional_cost=0.0005, cash_rate=cash)
+    table = qb.run_allocation_grid(dates, close, grid=grid, threads=3, **common)
+    assert table["returns"].shape == (len(dates) - 1, 7)
+    assert (table["dates"] == dates[1:]).all()
+    assert len(table["descriptions"]) == 7
+    assert "minimum variance" in table["descriptions"][2]
+
+    # A column is the run of its configuration.
+    single = qb.run_allocation(
+        dates, close, method="minimum_variance", lookback=80, rebalance=20, **common
+    )
+    value = single["strategy"]["value"]
+    assert np.array_equal(table["returns"][:, 3], value[1:] / value[:-1] - 1.0)
+    assert table["final_values"][3] == value[-1]
+    again = qb.run_allocation_grid(dates, close, grid=grid, threads=1, **common)
+    assert np.array_equal(again["returns"], table["returns"])
+
+    # And it feeds the validation as it is.
+    assert qb.deflated_sharpe(table["returns"])["trials"] == 7
+    assert qb.walk_forward(table["returns"], train=120, test=40)["first_row"] == 120
+
+    with pytest.raises(qb.Error, match="configuration 1"):
+        bad = [grid[0], dict(grid[2], max_weight=0.05)]
+        qb.run_allocation_grid(dates, close, grid=bad, **common)
+    with pytest.raises(qb.Error, match="unknown key"):
+        qb.run_allocation_grid(dates, close, grid=[dict(grid[0], window=5)], **common)
+    with pytest.raises(qb.Error, match="needs the key"):
+        qb.run_allocation_grid(
+            dates, close, grid=[{"method": "equal_weight"}], **common
+        )
