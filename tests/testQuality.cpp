@@ -125,6 +125,27 @@ namespace quantBacktest
         EXPECT_EQ(report.count(QualityCode::EventOffCalendar), 1u);
     }
 
+    // A spin-off recorded both as a dividend and as a split (seven such days
+    // in the S&P 500 history loaded by data-ingest) is flagged for the reader.
+    TEST(Quality, DividendAndSplitOnTheSameDayAreFlagged)
+    {
+        testing::SyntheticMarket m = cleanMarket();
+        m.addSplit(1, 200, 2.0);
+        m.dividends.push_back({1, m.dates[200], 0.5});
+        m.dividends.push_back({2, m.dates[200], 0.5});
+        const QualityReport report = check(m);
+        EXPECT_TRUE(report.usable());
+        ASSERT_EQ(report.count(QualityCode::DividendAndSplitSameDay), 1u);
+        for (const QualityIssue &issue : report.issues)
+        {
+            if (issue.code == QualityCode::DividendAndSplitSameDay)
+            {
+                EXPECT_EQ(issue.asset, 1u);
+                EXPECT_EQ(issue.first_date, m.dates[200]);
+            }
+        }
+    }
+
     // An extreme return is most often a split missing from the events: once
     // the split is declared, the same prices are clean.
     TEST(Quality, UndeclaredSplitIsAnExtremeReturn)

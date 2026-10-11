@@ -16,9 +16,9 @@ reste B1 dans `data-ingest` et B8 dans `quant-modeling`. Modules présents :
 `construction/`, `validation/`, `risk_models/`, `hedging/`, et la régression
 factorielle de `attribution/`. Le wheel `quantbacktest` expose :
 
-- `build_info()`, `fingerprint()` ;
+- `build_info()`, `fingerprint()`, `total_returns()`, `period_rates()` ;
 - `run_allocation()`, le backtest d'une stratégie avec ses points de
-  comparaison ;
+  comparaison, son run brut et son bilan de coûts ;
 - `performance_report()`, `factor_regression()`, `sharpe_difference()` ;
 - `walk_forward()`, `combinatorial_purged_cv()`, `deflated_sharpe()`,
   `backtest_overfitting()`, sur une table de rendements à une colonne par

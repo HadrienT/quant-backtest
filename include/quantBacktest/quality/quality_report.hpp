@@ -29,8 +29,9 @@ namespace quantBacktest
         SeriesEnds,    ///< no quote from some date to the end
         MissingQuotes, ///< days without a quote inside the life of the series
         NeverQuoted,
-        StalePrices,      ///< too many unchanged closes
-        EventOffCalendar, ///< applied on the next date of the calendar
+        StalePrices,             ///< too many unchanged closes
+        EventOffCalendar,        ///< applied on the next date of the calendar
+        DividendAndSplitSameDay, ///< a spin-off is counted twice at some sources
         WeekendDate,
     };
 

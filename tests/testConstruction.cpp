@@ -5,6 +5,7 @@
 #include "quantBacktest/construction/optimizer.hpp"
 #include "quantBacktest/core/error.hpp"
 #include "quantBacktest/core/random.hpp"
+#include "quantBacktest/metrics/cost_report.hpp"
 #include "quantBacktest/metrics/performance.hpp"
 
 #include "support/synthetic_market.hpp"
@@ -702,7 +703,61 @@ namespace quantBacktest
         {
             EXPECT_NEAR(runs.buy_and_hold.shares[m.at(61, i)], runs.strategy.shares[m.at(61, i)], 1e-6 * (1.0 + runs.strategy.shares[m.at(61, i)]));
         }
-        EXPECT_FALSE(runs.strategy.quality.issues.size() > 1000);
+        // Gross next to net: the same strategy without costs is worth more.
+        ASSERT_TRUE(runs.gross.has_value());
+        EXPECT_GT(runs.gross->value.back(), runs.strategy.value.back());
+        for (const Real c : runs.gross->costs)
+        {
+            ASSERT_EQ(c, 0.0);
+        }
+        // Without costs there is nothing to compare: no gross run.
+        const ComparedRuns freeRuns = run_with_comparisons(m.data(), config, backtest());
+        EXPECT_FALSE(freeRuns.gross.has_value());
+    }
+
+    // Section 5.2: turnover, cost per year and break-even cost.
+    TEST(CostSummary, TurnoverCostAndBreakEven)
+    {
+        const testing::SyntheticMarket m = testing::makeMarket(600, 10, 40);
+        const Real rate = 0.001;
+        const ProportionalCost cost(rate);
+        AllocationConfig config = allocation(AllocationMethod::EqualWeight);
+        const ComparedRuns runs = run_with_comparisons(m.data(), config, backtest(&cost));
+        const CostSummary s = summarize_costs(runs.strategy, *runs.gross, m.cashRate, 0, 252.0, 0.95);
+
+        EXPECT_GT(s.annualized_turnover, 0.0);
+        // A proportional cost: the bill is the rate times the amount traded,
+        // twice the one-way turnover.
+        EXPECT_NEAR(s.annual_cost_bps, rate * 2.0 * s.annualized_turnover * 1e4, 0.02 * s.annual_cost_bps);
+        ASSERT_TRUE(s.break_even_cost.has_value());
+        const Estimate &breakEven = *s.break_even_cost;
+        EXPECT_GT(breakEven.standard_error, 0.0);
+        EXPECT_LT(breakEven.lower, breakEven.upper);
+        EXPECT_FALSE(breakEven.convention.empty());
+
+        // Property: run at its break-even cost, the strategy earns no excess
+        // return, to the precision of the first-order formula.
+        if (breakEven.value > 0.0)
+        {
+            const ProportionalCost atBreakEven(breakEven.value);
+            const ComparedRuns again = run_with_comparisons(m.data(), config, backtest(&atBreakEven));
+            std::vector<Real> excess = simple_returns(again.strategy.value);
+            for (Index t = 0; t < excess.size(); ++t)
+            {
+                excess[t] -= m.cashRate[t + 1];
+            }
+            const Real grossMean = breakEven.value * 2.0 * s.annualized_turnover;
+            EXPECT_NEAR(mean(excess) * 252.0, 0.0, 0.1 * grossMean);
+        }
+
+        // A run that never trades has no break-even cost.
+        testing::Idle idle;
+        const BacktestResult cashOnly = run_backtest(m.data(), idle, backtest());
+        const CostSummary none = summarize_costs(cashOnly, cashOnly, m.cashRate, 0, 252.0, 0.95);
+        EXPECT_EQ(none.annualized_turnover, 0.0);
+        EXPECT_EQ(none.annual_cost_bps, 0.0);
+        EXPECT_FALSE(none.break_even_cost.has_value());
+        EXPECT_THROW(summarize_costs(runs.strategy, cashOnly, std::vector<Real>(5, 0.0), 0, 252.0, 0.95), Error);
     }
 
 } // namespace quantBacktest

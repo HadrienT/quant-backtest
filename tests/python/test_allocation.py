@@ -174,3 +174,50 @@ def test_sharpe_difference():
     )
     assert plain["bootstrap"] is None and plain["bootstrap_p_value"] is None
     assert plain["analytical"] == d["analytical"]
+
+
+def test_gross_run_and_cost_summary():
+    _, result = run()
+    assert result["gross"]["value"][-1] > result["strategy"]["value"][-1]
+    assert result["gross"]["costs"].sum() == 0.0
+    summary = result["cost_summary"]
+    assert summary["annualized_turnover"] > 0
+    # 5 basis points on twice the one-way turnover.
+    expected = 0.0005 * 2 * summary["annualized_turnover"] * 1e4
+    assert summary["annual_cost_bps"] == pytest.approx(expected, rel=0.02)
+    assert set(summary["break_even_cost"]) >= {"value", "standard_error", "lower"}
+
+    _, free = run(proportional_cost=0.0)
+    assert free["gross"] is None
+    assert free["cost_summary"]["annual_cost_bps"] == 0.0
+
+
+def test_total_returns_and_period_rates():
+    dates = np.array(
+        ["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-01-08"],
+        dtype="datetime64[D]",
+    )
+    close = np.array(
+        [[100.0, 50.0], [110.0, 50.0], [55.0, np.nan], [66.0, 52.0], [66.0, 52.0]]
+    )
+    dividends = (np.array([0, 0]), dates[[1, 2]], np.array([1.0, 0.5]))
+    splits = (np.array([0]), dates[[2]], np.array([2.0]))
+    returns = qb.total_returns(dates, close, dividends=dividends, splits=splits)
+    assert returns.shape == close.shape
+    assert np.isnan(returns[0]).all()
+    assert returns[1, 0] == pytest.approx(111.0 / 100.0 - 1.0)
+    assert returns[2, 0] == pytest.approx(2.0 * 55.5 / 110.0 - 1.0)
+    # No return across a missing quote.
+    assert np.isnan(returns[2, 1]) and np.isnan(returns[3, 1])
+    assert returns[4, 1] == 0.0
+
+    annual = np.array([0.036, 0.072, 0.072, 0.072, 0.5])
+    rates = qb.period_rates(dates, annual, basis=360.0)
+    assert rates[0] == 0.0
+    assert rates[1] == pytest.approx(0.036 / 360.0)
+    # Friday to Monday: three days, at the rate known on Friday.
+    assert rates[4] == pytest.approx(0.072 * 3 / 360.0)
+    with pytest.raises(TypeError):
+        qb.period_rates(dates, annual)
+    with pytest.raises(qb.Error):
+        qb.period_rates(dates, annual[:2], basis=360.0)

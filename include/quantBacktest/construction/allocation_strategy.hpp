@@ -6,6 +6,7 @@
 #include "quantBacktest/engine/backtest.hpp"
 #include "quantBacktest/engine/strategy.hpp"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -109,6 +110,8 @@ namespace quantBacktest
     /// - the equal-weight portfolio, rebalanced on the same days;
     /// - buy and hold of the strategy's first weights.
     ///
+    /// - the strategy itself without costs, when it has costs.
+    ///
     /// The total-return benchmark is a series the caller already has.
     struct ComparedRuns
     {
@@ -116,6 +119,9 @@ namespace quantBacktest
         std::vector<AllocationRecord> allocations;
         BacktestResult equal_weight;
         BacktestResult buy_and_hold;
+        /// The strategy again with no transaction cost at all: gross and net
+        /// side by side (section 5.2). Absent when the run had no cost.
+        std::optional<BacktestResult> gross;
         std::string description;
     };
 

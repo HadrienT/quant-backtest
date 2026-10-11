@@ -2,6 +2,7 @@
 
 #include "quantBacktest/construction/covariance.hpp"
 #include "quantBacktest/construction/optimizer.hpp"
+#include "quantBacktest/costs/cost_model.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -261,9 +262,10 @@ namespace quantBacktest
                                       const RunControl &control)
     {
         ComparedRuns out;
+        const double runs = backtest.costs != nullptr ? 4.0 : 3.0;
         AllocationStrategy strategy(allocation);
         out.description = strategy.describe();
-        out.strategy = run_backtest(market, strategy, backtest, share(control, 0.0, 1.0 / 3.0));
+        out.strategy = run_backtest(market, strategy, backtest, share(control, 0.0, 1.0 / runs));
         out.allocations = strategy.history();
 
         // The data were controlled by the first run.
@@ -275,11 +277,21 @@ namespace quantBacktest
         equal.min_weight = 0.0;
         equal.max_weight = 1.0;
         AllocationStrategy equalWeight(equal);
-        out.equal_weight = run_backtest(market, equalWeight, again, share(control, 1.0 / 3.0, 1.0 / 3.0));
+        out.equal_weight = run_backtest(market, equalWeight, again, share(control, 1.0 / runs, 1.0 / runs));
 
         AllocationStrategy first(allocation);
         FirstDecisionOnly hold(first);
-        out.buy_and_hold = run_backtest(market, hold, again, share(control, 2.0 / 3.0, 1.0 / 3.0));
+        out.buy_and_hold = run_backtest(market, hold, again, share(control, 2.0 / runs, 1.0 / runs));
+
+        if (backtest.costs != nullptr)
+        {
+            // A cost of zero, declared: the engine does not execute at the
+            // signal's own close without a cost model.
+            const ProportionalCost free(0.0);
+            again.costs = &free;
+            AllocationStrategy gross(allocation);
+            out.gross = run_backtest(market, gross, again, share(control, 3.0 / runs, 1.0 / runs));
+        }
         control.report(1.0);
         return out;
     }
