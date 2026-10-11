@@ -5,8 +5,9 @@ parlent**. Il est canonique ici ; le modifier est un ADR dans
 [`../blueprint/decisions.md`](../blueprint/decisions.md), et se fait par deux
 issues coordonnées (une par dépôt).
 
-L'interface Python n'existe pas encore : les §1 à §4 fixent les règles qu'elle
-suivra, le §5 sera rempli lot par lot, à mesure que les fonctions arrivent.
+L'interface Python ne porte encore que l'identité du build : les §1 à §4 fixent
+les règles qu'elle suit, le §5 est rempli lot par lot, à mesure que les
+fonctions arrivent.
 
 ## 1. Qui possède quoi
 
@@ -92,12 +93,12 @@ journal.
 
 ## 5. Fonctions exposées
 
-Aucune pour l'instant. Chaque lot qui ajoute une fonction au wheel ajoute ici
-sa ligne : nom, entrées, sorties, unités, convention.
+Chaque lot qui ajoute une fonction au wheel ajoute ici sa ligne : nom, entrées,
+sorties, unités, convention.
 
 | Fonction | Lot | Entrées | Sorties |
 |---|---|---|---|
-| — | — | — | — |
+| `build_info()` | B0 | aucune | dictionnaire de chaînes : `version` (`majeur.mineur.correctif`, aussi dans `__version__`), `git_sha` (40 chiffres hexadécimaux, suivis de `-dirty` si l'arbre avait des modifications non commitées, ou `unknown` si le build n'avait pas d'information git), `quantmodeling_sha` (40 chiffres hexadécimaux) |
 
 ## 6. Compatibilité
 
