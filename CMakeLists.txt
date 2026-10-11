@@ -57,7 +57,11 @@ add_library(quantBacktest
   src/inference/sharpe_inference.cpp
   src/inference/bootstrap.cpp
   src/inference/performance_report.cpp
+  src/inference/sharpe_difference.cpp
   src/attribution/factor_regression.cpp
+  src/construction/covariance.cpp
+  src/construction/optimizer.cpp
+  src/construction/allocation_strategy.cpp
   src/risk_models/var_backtest.cpp
 )
 

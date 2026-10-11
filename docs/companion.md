@@ -1125,6 +1125,7 @@ la page.
 | Lo, « The Statistics of Sharpe Ratios », *Financial Analysts Journal* 58(4), 2002 | §7.2, §8.1 |
 | Mertens, « Comments on Variance of the IID Estimator in Lo (2002) », note de travail, 2002 † | §8.1 |
 | Jobson & Korkie, « Performance Hypothesis Testing with the Sharpe and Treynor Measures », *Journal of Finance* 36(4), 1981 | §8.4 |
+| Memmel, « Performance Hypothesis Testing with the Sharpe Ratio », *Finance Letters* 1(1), 2003 † | §8.4 |
 | Ledoit & Wolf, « Robust Performance Hypothesis Testing with the Sharpe Ratio », *Journal of Empirical Finance* 15(5), 2008 | §8.4 |
 | Politis & Romano, « The Stationary Bootstrap », *Journal of the American Statistical Association* 89(428), 1994 | §8.3 |
 | Newey & West, « A Simple, Positive Semi-Definite, Heteroskedasticity and Autocorrelation Consistent Covariance Matrix », *Econometrica* 55(3), 1987 | §10.1 |
@@ -1150,6 +1151,8 @@ la page.
 | DeMiguel, Garlappi & Uppal, « Optimal Versus Naive Diversification: How Inefficient Is the 1/N Portfolio Strategy? », *Review of Financial Studies* 22(5), 2009 | §6.1 |
 | Ledoit & Wolf, « A Well-Conditioned Estimator for Large-Dimensional Covariance Matrices », *Journal of Multivariate Analysis* 88(2), 2004 | §6.2 |
 | Maillard, Roncalli & Teïletche, « The Properties of Equally Weighted Risk Contribution Portfolios », *Journal of Portfolio Management* 36(4), 2010 | §6.2 |
+| Spinu, « An Algorithm for Computing Risk Parity Weights », note de travail, 2013 † | §6.2 |
+| Nocedal & Wright, *Numerical Optimization*, 2ᵉ éd., Springer, 2006 | §6.2 |
 | Moreira & Muir, « Volatility-Managed Portfolios », *Journal of Finance* 72(4), 2017 | §6.2 |
 | Grinold & Kahn, *Active Portfolio Management*, 2ᵉ éd., McGraw-Hill, 1999 | §6.2 |
 

@@ -13,6 +13,7 @@ add_executable(quantBacktest_tests
   testMetrics.cpp
   testInference.cpp
   testAttribution.cpp
+  testConstruction.cpp
   testRiskModels.cpp
 )
 target_link_libraries(quantBacktest_tests

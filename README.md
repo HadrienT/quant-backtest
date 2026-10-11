@@ -21,11 +21,16 @@ It covers the four things a desk calls "backtest":
 - performance metrics, each returned with its interval: the standard error of
   the Sharpe ratio, the probabilistic Sharpe ratio, the stationary bootstrap;
 - the factor regression, with an annualised alpha and Newey-West errors;
+- portfolio construction: equal weight, minimum variance, maximum Sharpe ratio
+  and risk parity, with a Ledoit-Wolf covariance and bounds held inside the
+  optimiser; a strategy is always returned with the equal-weight portfolio and
+  buy-and-hold next to it, and a test of the difference between two Sharpe
+  ratios;
 - the backtest of a value-at-risk model: Kupiec and Christoffersen tests, and
   the Basel traffic-light zones.
 
-Portfolio construction, validation and the hedging backtest are not written
-yet. The work packages are listed in
+Validation (walk-forward, deflated Sharpe ratio) and the hedging backtest are
+not written yet. The work packages are listed in
 [`blueprint/README.md`](blueprint/README.md).
 
 ## Where it sits
@@ -86,8 +91,9 @@ qb.var_backtest(pnl, value_at_risk, tail_probability=0.01)["traffic_light"]
 qb.build_info()   # version, commit, commit of quantModeling
 ```
 
-The Python wheel exposes the statistics only; the accounting engine is C++
-for now. The functions are listed in [`docs/contract.md`](docs/contract.md).
+`qb.run_allocation(dates, close, method="minimum_variance", ...)` runs a
+strategy on raw prices and returns the book day by day, with its comparison
+points. The functions are listed in [`docs/contract.md`](docs/contract.md).
 
 ## License
 

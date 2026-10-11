@@ -236,3 +236,43 @@ puis optimisation au lot B4), en dépendance privée : aucun en-tête public ne
 l'expose. Le nombre de retards de Newey-West et la longueur de bloc du
 bootstrap n'ont pas de valeur par défaut : ce sont des choix que l'appelant
 déclare, et que le résultat répète.
+
+---
+
+## ADR-010 — Le solveur d'optimisation est écrit ici
+
+**Décision.** Les portefeuilles optimisés sont calculés par deux algorithmes
+écrits dans `construction/`, sur Eigen :
+
+- un **ensemble actif primal** (Nocedal & Wright 2006, §16.5) pour le problème
+  quadratique à budget et à bornes, $\min \tfrac12 w^\top \Sigma w - c^\top w$
+  sous $\sum_i w_i = 1$ et $l \le w \le u$. Il sert à la variance minimale et,
+  par recherche de racine le long de la frontière efficiente, au Sharpe
+  maximal ;
+- une **itération de Newton** sur la formulation convexe de Spinu (2013) pour
+  la parité de risque.
+
+**Pourquoi.** Le lot B4 demande que les contraintes soient tenues **dans**
+l'optimiseur et qu'un problème sans solution échoue explicitement (constat 5).
+Un ensemble actif rend un poids à sa borne *égal* à sa borne, pas à 1e-6 près,
+et l'infaisabilité se décide avant de résoudre, par une somme. Les problèmes
+sont petits et denses (de quelques titres à quelques centaines), et un
+portefeuille long à bornes n'a que peu de poids strictement intérieurs : le
+système à résoudre à chaque itération est de la taille de ces poids-là.
+
+**Écarté.**
+- *OSQP* (port vcpkg) : robuste et rapide, mais c'est une méthode ADMM, dont la
+  solution respecte les bornes à une tolérance près. Il faudrait rogner et
+  renormaliser après coup, ce qui est exactement le défaut du constat 5.
+- *Un solveur quadratique général* (Goldfarb-Idnani, `eigen-quadprog`) : exact
+  lui aussi, mais il ajoute une dépendance pour une classe de contraintes
+  (inégalités linéaires quelconques) dont on n'a pas l'usage aujourd'hui.
+- *Reprendre SLSQP* par NLopt : une dépendance lourde, et un solveur local
+  dont le succès doit être testé à chaque appel.
+
+**Limites assumées.** Seules les bornes par titre et le budget sont des
+contraintes : ni secteur, ni neutralité au marché, ni limite de rotation
+(§4.5). Les ajouter demandera des inégalités générales, donc de revenir sur
+cette décision. La covariance doit être définie positive : celle de
+l'échantillon ne l'est pas avec moins de périodes que de titres, et elle est
+alors refusée avec un message qui renvoie à l'estimateur contracté.
