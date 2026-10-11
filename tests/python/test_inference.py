@@ -176,3 +176,29 @@ def test_fingerprint_is_the_sha256_of_type_shape_and_bytes():
     assert qb.fingerprint(a[::2]) == expected(a[::2].copy())
     with pytest.raises(ValueError):
         qb.fingerprint(np.array([object()]))
+
+
+def test_default_rules_for_block_length_and_lags():
+    rng = np.random.default_rng(8)
+    noise = rng.normal(0.0, 1.0, 4000)
+    persistent = np.empty(4000)
+    persistent[0] = noise[0]
+    for t in range(1, 4000):
+        persistent[t] = 0.7 * persistent[t - 1] + noise[t]
+    short = qb.optimal_block_length(noise)
+    long = qb.optimal_block_length(persistent)
+    assert 1.0 <= short < 5.0
+    assert long > 5 * short
+    assert qb.newey_west_lag(1000) == 6
+    assert qb.newey_west_lag(100) == 4
+    # They plug into the functions that have no default.
+    report = qb.performance_report(
+        0.01 * persistent,
+        np.zeros(4000),
+        bootstrap_replications=100,
+        mean_block_length=long,
+        seed=1,
+    )
+    assert "sharpe_ratio_bootstrap" in report["metrics"]
+    with pytest.raises(qb.Error):
+        qb.optimal_block_length(np.ones(100))

@@ -21,7 +21,8 @@ factorielle de `attribution/`. Le wheel `quantbacktest` expose :
   comparaison, son run brut et son bilan de coûts ;
 - `run_allocation_grid()`, un backtest par configuration, qui rend la table
   attendue par la validation ;
-- `performance_report()`, `factor_regression()`, `sharpe_difference()` ;
+- `performance_report()`, `factor_regression()`, `sharpe_difference()`, et
+  deux règles par défaut, `optimal_block_length()` et `newey_west_lag()` ;
 - `walk_forward()`, `combinatorial_purged_cv()`, `deflated_sharpe()`,
   `backtest_overfitting()`, sur une table de rendements à une colonne par
   configuration essayée ;

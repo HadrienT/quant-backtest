@@ -50,6 +50,27 @@ namespace quantBacktest
     std::vector<Real> stationary_bootstrap(Index observations, Index outputs, const BootstrapStatistic &statistic,
                                            const BootstrapConfig &config, const RunControl &control = {});
 
+    /// Mean block length of the stationary bootstrap that minimises the mean
+    /// squared error of the bootstrap variance of the **sample mean** of the
+    /// series: Politis and White, "Automatic Block-Length Selection for the
+    /// Dependent Bootstrap", Econometric Reviews 23(1), 2004, with the
+    /// correction of Patton, Politis and White, Econometric Reviews 28(4),
+    /// 2009. With R(k) the autocovariances and lambda the flat-top window
+    /// (1 below 1/2, 2 (1 - |s|) up to 1):
+    ///
+    ///     G = sum_k lambda(k/M) |k| R(k),   D = 2 (sum_k lambda(k/M) R(k))^2
+    ///     b = (2 G^2 / D)^(1/3) n^(1/3)
+    ///
+    /// M is twice the first lag after which K_n = max(5, ceil(log10 n))
+    /// autocorrelations in a row stay below 1.96 sqrt(log10(n) / n). The
+    /// result is kept between 1 and ceil(min(3 sqrt(n), n / 3)), as in the
+    /// authors' code.
+    ///
+    /// It is a rule for the mean. For a Sharpe ratio or a drawdown it is a
+    /// reasonable starting point, applied to the returns; it is not optimal
+    /// for them.
+    Real optimal_block_length(std::span<const Real> series);
+
     struct BootstrapInterval
     {
         Real lower = 0.0;

@@ -159,6 +159,15 @@ namespace quantBacktest
         EXPECT_NEAR(r.r_squared, 0.64 / (0.64 + 0.25), 0.02);
     }
 
+    TEST(FactorRegression, LagRule)
+    {
+        EXPECT_EQ(newey_west_lag_rule(100), 4u);
+        EXPECT_EQ(newey_west_lag_rule(1000), 6u);
+        EXPECT_EQ(newey_west_lag_rule(2520), 8u);
+        EXPECT_EQ(newey_west_lag_rule(10), 2u);
+        EXPECT_THROW(newey_west_lag_rule(0), Error);
+    }
+
     TEST(FactorRegression, RefusesWhatItCannotSolve)
     {
         std::mt19937_64 rng(5);

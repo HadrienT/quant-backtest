@@ -21,6 +21,15 @@ namespace quantBacktest
         Index newey_west_lags = 0;
     };
 
+    /// A number of Newey-West lags for T observations when none is argued
+    /// for: floor(4 (T / 100)^(2/9)). It is the fixed rule that statistical
+    /// software uses as a default (statsmodels' `cov_hac`, for one), with the
+    /// growth rate that Newey and West, "Automatic Lag Selection in Covariance
+    /// Matrix Estimation", Review of Economic Studies 61(4), 1994, give for
+    /// the Bartlett weights. It is a convention, not their data-driven
+    /// selection: 6 lags for four years of daily returns.
+    Index newey_west_lag_rule(Index observations);
+
     /// The regression of the companion, section 10.1:
     ///
     ///     Re[t] = alpha + sum_k beta[k] F[t, k] + e[t]

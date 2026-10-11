@@ -278,6 +278,97 @@ namespace quantBacktest
         EXPECT_LT(meanError(persistent, 1.0), 1.6 * textbook);
     }
 
+    // The block length chosen by the rule of Politis and White: short for
+    // independent data, and for an autoregression the value their formula
+    // gives in closed form, (2 rho / (1 - rho^2))^(2/3) n^(1/3).
+    TEST(Bootstrap, OptimalBlockLengthFollowsTheDependence)
+    {
+        std::mt19937_64 rng(31);
+        const Index n = 5000;
+        const auto autoregression = [&](Real rho)
+        {
+            std::normal_distribution<Real> normal(0.0, 1.0);
+            std::vector<Real> x(n);
+            x[0] = normal(rng);
+            for (Index t = 1; t < n; ++t)
+            {
+                x[t] = rho * x[t - 1] + normal(rng);
+            }
+            return x;
+        };
+        const auto theory = [&](Real rho)
+        { return std::pow(2.0 * rho / (1.0 - rho * rho), 2.0 / 3.0) * std::cbrt(static_cast<Real>(n)); };
+        Real previous = 0.0;
+        for (const Real rho : {0.3, 0.6, 0.85})
+        {
+            Real mean = 0.0;
+            const int draws = 30;
+            for (int draw = 0; draw < draws; ++draw)
+            {
+                mean += optimal_block_length(autoregression(rho)) / draws;
+            }
+            EXPECT_NEAR(mean, theory(rho), 0.25 * theory(rho)) << "rho " << rho;
+            EXPECT_GT(mean, previous);
+            previous = mean;
+        }
+        // Independent data: a few periods at most.
+        Real independent = 0.0;
+        for (int draw = 0; draw < 30; ++draw)
+        {
+            independent += optimal_block_length(autoregression(0.0)) / 30.0;
+        }
+        EXPECT_LT(independent, 4.0);
+        EXPECT_GE(independent, 1.0);
+
+        // Never below 1, never above ceil(min(3 sqrt(n), n / 3)), even on a
+        // series that is all dependence.
+        std::vector<Real> walk(300);
+        std::normal_distribution<Real> normal(0.0, 1.0);
+        walk[0] = 0.0;
+        for (Index t = 1; t < walk.size(); ++t)
+        {
+            walk[t] = walk[t - 1] + normal(rng);
+        }
+        const Real length = optimal_block_length(walk);
+        EXPECT_GT(length, 10.0);
+        EXPECT_LE(length, std::ceil(3.0 * std::sqrt(300.0)));
+        EXPECT_THROW(optimal_block_length(std::vector<Real>(10, 1.0)), Error);
+        EXPECT_THROW(optimal_block_length(std::vector<Real>(100, 1.0)), Error);
+    }
+
+    // The bootstrap run at that block length gives the right standard error
+    // of the mean of dependent data, without the caller choosing anything.
+    TEST(Bootstrap, OptimalBlockLengthGivesTheRightStandardError)
+    {
+        std::mt19937_64 rng(32);
+        std::normal_distribution<Real> normal(0.0, 1.0);
+        const Index n = 4000;
+        std::vector<Real> x(n);
+        x[0] = normal(rng);
+        for (Index t = 1; t < n; ++t)
+        {
+            x[t] = 0.6 * x[t - 1] + normal(rng);
+        }
+        const BootstrapStatistic statistic = [&](std::span<const Index> indices, std::span<Real> out)
+        {
+            Real sum = 0.0;
+            for (const Index k : indices)
+            {
+                sum += x[k];
+            }
+            out[0] = sum / static_cast<Real>(indices.size());
+        };
+        BootstrapConfig config;
+        config.replications = 2000;
+        config.mean_block_length = optimal_block_length(x);
+        config.seed = 3;
+        config.threads = 4;
+        const Real error = percentile_interval(stationary_bootstrap(n, 1, statistic, config), 0.95).standard_error;
+        // Long-run standard deviation 1 / (1 - 0.6) = 2.5, over sqrt(n).
+        const Real truth = 2.5 / std::sqrt(static_cast<Real>(n));
+        EXPECT_NEAR(error, truth, 0.2 * truth);
+    }
+
     TEST(Bootstrap, PercentileInterval)
     {
         std::vector<Real> replications;
