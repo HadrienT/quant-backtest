@@ -584,6 +584,44 @@ namespace quantBacktest
         }
     }
 
+    // Walk-forward with a growing window: each decision uses every return
+    // before it, and still none after it.
+    TEST(AllocationStrategy, ExpandingWindowUsesAllThePastAndOnlyThePast)
+    {
+        const testing::SyntheticMarket m = testing::makeMarket(200, 5, 39);
+        AllocationConfig config = allocation(AllocationMethod::MinimumVariance);
+        AllocationStrategy sliding(config);
+        run_backtest(m.data(), sliding, backtest());
+        config.expanding = true;
+        AllocationStrategy growing(config);
+        run_backtest(m.data(), growing, backtest());
+        ASSERT_EQ(growing.history().size(), sliding.history().size());
+        // On the first decision the two windows are nearly the same; later
+        // they are not.
+        EXPECT_NE(growing.history().back().weights, sliding.history().back().weights);
+        EXPECT_NE(growing.describe().find("every daily return"), std::string::npos);
+
+        // Changing the data after a decision day does not change that decision.
+        testing::SyntheticMarket changed = m;
+        for (Index t = 121; t < m.days; ++t)
+        {
+            for (std::vector<Real> *table : {&changed.open, &changed.high, &changed.low, &changed.close})
+            {
+                (*table)[changed.at(t, 2)] *= 1.5;
+            }
+        }
+        AllocationStrategy again(config);
+        run_backtest(changed.data(), again, backtest());
+        for (Index k = 0; k < growing.history().size(); ++k)
+        {
+            if (growing.history()[k].date <= m.dates[120])
+            {
+                EXPECT_EQ(again.history()[k].weights, growing.history()[k].weights);
+            }
+        }
+        EXPECT_NE(again.history().back().weights, growing.history().back().weights);
+    }
+
     // Finding 12: on returns without any signal, the Sharpe ratio the
     // optimiser reports on its own window is far above what the same weights
     // earn afterwards. It measures overfitting, not skill.

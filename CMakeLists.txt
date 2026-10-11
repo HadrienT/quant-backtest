@@ -64,6 +64,7 @@ add_library(quantBacktest
   src/construction/optimizer.cpp
   src/construction/allocation_strategy.cpp
   src/risk_models/var_backtest.cpp
+  src/validation/validation.cpp
 )
 
 set_target_properties(quantBacktest PROPERTIES

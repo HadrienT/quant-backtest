@@ -42,6 +42,11 @@ namespace quantBacktest
         /// day. It also defines which assets can be held: those quoted on
         /// every day of the window and members of the universe that day.
         Index lookback = 252;
+        /// False: the window slides and keeps `lookback` returns. True: it
+        /// grows from the first day of the data, `lookback` being the history
+        /// required before the first decision. Both are walk-forward: a
+        /// decision only reads what precedes it.
+        bool expanding = false;
         RebalanceSchedule schedule = RebalanceSchedule::EveryNDays;
         Index rebalance_every = 21;
         /// Bounds of each weight, held inside the optimisation. Not available
