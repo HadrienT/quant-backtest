@@ -27,7 +27,7 @@ factorielle de `attribution/`. Le wheel `quantbacktest` expose :
   `backtest_overfitting()`, sur une table de rendements à une colonne par
   configuration essayée ;
 - `hedging_backtest()`, `fit_minimum_variance_delta()` ;
-- `var_backtest()`.
+- `var_backtest()`, `pla_test()`, `desk_backtest()`.
 
 Leur forme est au §5 de [`docs/contract.md`](docs/contract.md). Une stratégie
 est du C++ : le wheel n'accepte pas de poids calculés côté Python, qui

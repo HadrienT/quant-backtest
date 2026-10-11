@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "quantBacktest/core/error.hpp"
+#include "quantBacktest/risk_models/pla_test.hpp"
 #include "quantBacktest/risk_models/var_backtest.hpp"
 
 #include <cmath>
@@ -254,6 +255,166 @@ namespace quantBacktest
         EXPECT_EQ(traffic_light(40, 500, 0.025).zone, Zone::Red);
         EXPECT_THROW(traffic_light(11, 10, 0.01), Error);
         EXPECT_THROW(traffic_light(1, 10, 1.0), Error);
+    }
+
+    // ---- P&L attribution test (MAR32.34 to MAR32.43) ----
+
+    namespace
+    {
+
+        // A hypothetical P&L and a risk-theoretical one that misses part of
+        // it: `missing` is the standard deviation of what the risk model does
+        // not see, in units of the P&L's own.
+        void desk(Index days, Real missing, std::mt19937_64 &rng, std::vector<Real> &hypothetical, std::vector<Real> &theoretical)
+        {
+            std::normal_distribution<Real> normal(0.0, 1.0);
+            hypothetical.resize(days);
+            theoretical.resize(days);
+            for (Index t = 0; t < days; ++t)
+            {
+                theoretical[t] = normal(rng);
+                hypothetical[t] = theoretical[t] + missing * normal(rng);
+            }
+        }
+
+    } // namespace
+
+    TEST(PlaTest, MetricsByHand)
+    {
+        // Ranks 1 2 3 4 5 against 2 1 4 3 5: Spearman 1 - 6 x 4 / 120 = 0.8.
+        const std::vector<Real> a = {1.0, 2.0, 3.0, 4.0, 5.0};
+        const std::vector<Real> b = {20.0, 10.0, 40.0, 30.0, 50.0};
+        const PlaTest r = pla_test(a, b);
+        EXPECT_NEAR(r.spearman, 0.8, 1e-12);
+        // Every value of b is above every value of a: the two distribution
+        // functions are as far apart as they can be.
+        EXPECT_DOUBLE_EQ(r.kolmogorov_smirnov, 1.0);
+        EXPECT_FALSE(r.zone.has_value());
+
+        // The same series: perfect on both metrics.
+        const PlaTest same = pla_test(a, a);
+        EXPECT_DOUBLE_EQ(same.spearman, 1.0);
+        EXPECT_DOUBLE_EQ(same.kolmogorov_smirnov, 0.0);
+        EXPECT_DOUBLE_EQ(same.kolmogorov_smirnov_p_value, 1.0);
+
+        // Ties share the mean of their ranks: 1, 2.5, 2.5, 4 on both sides.
+        const std::vector<Real> tied = {1.0, 2.0, 2.0, 3.0};
+        EXPECT_DOUBLE_EQ(pla_test(tied, tied).spearman, 1.0);
+        // Shifted by one value out of four: the functions differ by 1/4 at most.
+        const std::vector<Real> c = {1.0, 2.0, 3.0, 4.0};
+        const std::vector<Real> d = {2.0, 3.0, 4.0, 5.0};
+        EXPECT_DOUBLE_EQ(pla_test(c, d).kolmogorov_smirnov, 0.25);
+
+        EXPECT_THROW(pla_test(a, c), Error);
+        EXPECT_THROW(pla_test(std::vector<Real>{1.0, 2.0}, std::vector<Real>{1.0, 2.0}), Error);
+        EXPECT_THROW(pla_test(std::vector<Real>(5, 1.0), a), Error);
+    }
+
+    // The p-values the regulatory text quotes next to its thresholds: 0.264
+    // at 0.09 and 0.055 at 0.12, on 250 days.
+    TEST(PlaTest, PValuesOfTheRegulatoryThresholds)
+    {
+        // Two samples of 250 whose distribution functions differ by a chosen
+        // number of observations: b is a, shifted by half a step, with its
+        // lowest values sent above everything.
+        const auto apart = [](Index observations)
+        {
+            std::vector<Real> a(250);
+            std::vector<Real> b(250);
+            for (Index t = 0; t < 250; ++t)
+            {
+                a[t] = static_cast<Real>(t);
+                b[t] = t + 1 < observations ? 1000.0 + static_cast<Real>(t) : static_cast<Real>(t) + 0.5;
+            }
+            return pla_test(a, b);
+        };
+        // 0.09 x 250 is not a whole number of observations: 23 of them, 0.092.
+        const PlaTest atAmber = apart(23);
+        EXPECT_NEAR(atAmber.kolmogorov_smirnov, 0.092, 1e-12);
+        EXPECT_NEAR(atAmber.kolmogorov_smirnov_p_value, 0.264, 0.03);
+        const PlaTest atRed = apart(30);
+        EXPECT_NEAR(atRed.kolmogorov_smirnov, 0.12, 1e-12);
+        EXPECT_NEAR(atRed.kolmogorov_smirnov_p_value, 0.055, 0.002);
+    }
+
+    TEST(PlaTest, ZonesOnTwoHundredAndFiftyDays)
+    {
+        std::mt19937_64 rng(20);
+        std::vector<Real> hypothetical;
+        std::vector<Real> theoretical;
+        // A risk model that sees nearly everything: green. One that misses
+        // half the variance: the correlation falls to about 0.7, amber or red.
+        // One that sees nothing: red.
+        int green = 0;
+        int red = 0;
+        int notGreen = 0;
+        for (int draw = 0; draw < 200; ++draw)
+        {
+            desk(250, 0.2, rng, hypothetical, theoretical);
+            green += *pla_test(hypothetical, theoretical).zone == Zone::Green ? 1 : 0;
+            desk(250, 1.0, rng, hypothetical, theoretical);
+            notGreen += *pla_test(hypothetical, theoretical).zone != Zone::Green ? 1 : 0;
+            std::vector<Real> unrelated;
+            std::vector<Real> other;
+            desk(250, 0.0, rng, unrelated, other);
+            desk(250, 0.0, rng, hypothetical, other);
+            red += *pla_test(unrelated, hypothetical).zone == Zone::Red ? 1 : 0;
+        }
+        EXPECT_EQ(green, 200);
+        EXPECT_EQ(notGreen, 200);
+        EXPECT_EQ(red, 200);
+
+        // Exactly on the thresholds: neither green nor red.
+        desk(250, 0.2, rng, hypothetical, theoretical);
+        const PlaTest r = pla_test(hypothetical, theoretical);
+        EXPECT_GT(r.spearman, 0.9);
+        EXPECT_LT(r.kolmogorov_smirnov, 0.09);
+    }
+
+    // The same variance but another shape: the correlation is perfect and the
+    // distribution test fails. The two metrics do not measure the same thing.
+    TEST(PlaTest, AScaleErrorPassesTheCorrelationAndFailsTheDistribution)
+    {
+        std::mt19937_64 rng(21);
+        std::normal_distribution<Real> normal(0.0, 1.0);
+        std::vector<Real> hypothetical(250);
+        std::vector<Real> theoretical(250);
+        for (Index t = 0; t < 250; ++t)
+        {
+            hypothetical[t] = normal(rng);
+            theoretical[t] = 0.5 * hypothetical[t];
+        }
+        const PlaTest r = pla_test(hypothetical, theoretical);
+        EXPECT_NEAR(r.spearman, 1.0, 1e-12);
+        EXPECT_GT(r.kolmogorov_smirnov, 0.12);
+        EXPECT_EQ(*r.zone, Zone::Red);
+    }
+
+    // MAR32.19: more than 12 exceptions at 99 %, or more than 30 at 97.5 %.
+    TEST(DeskBacktest, ExceptionLimits)
+    {
+        const std::vector<Real> var99(250, 2.0);
+        const std::vector<Real> var975(250, 1.0);
+        const auto run = [&](Index beyond99, Index beyond975)
+        {
+            std::vector<Real> pnl(250, 0.0);
+            for (Index t = 0; t < beyond99; ++t)
+            {
+                pnl[t] = -3.0;
+            }
+            for (Index t = beyond99; t < beyond99 + beyond975; ++t)
+            {
+                pnl[t] = -1.5;
+            }
+            return desk_backtest(pnl, var99, var975);
+        };
+        const DeskBacktest fine = run(12, 18);
+        EXPECT_EQ(fine.exceptions_99, 12u);
+        EXPECT_EQ(fine.exceptions_975, 30u);
+        EXPECT_TRUE(fine.within_limits);
+        EXPECT_FALSE(run(13, 0).within_limits);
+        EXPECT_FALSE(run(5, 26).within_limits);
+        EXPECT_THROW(desk_backtest(std::vector<Real>(10, 0.0), var99, var975), Error);
     }
 
 } // namespace quantBacktest

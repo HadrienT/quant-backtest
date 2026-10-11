@@ -57,3 +57,23 @@ def test_bad_inputs_are_refused():
         qb.var_backtest(np.zeros(10), -np.ones(10), tail_probability=0.01)
     with pytest.raises(TypeError):
         qb.var_backtest(np.zeros(10), np.ones(10))
+
+
+def test_pla_test_and_desk_limits():
+    rng = np.random.default_rng(4)
+    theoretical = rng.normal(0.0, 1.0, 250)
+    close = qb.pla_test(theoretical + 0.2 * rng.normal(0.0, 1.0, 250), theoretical)
+    assert close["zone"] == "green"
+    assert close["spearman"] > 0.9
+    far = qb.pla_test(rng.normal(0.0, 1.0, 250), theoretical)
+    assert far["zone"] == "red"
+    scaled = qb.pla_test(2.0 * theoretical, theoretical)
+    assert scaled["spearman"] == pytest.approx(1.0)
+    assert scaled["zone"] == "red"
+    assert qb.pla_test(theoretical[:100], theoretical[:100])["zone"] is None
+
+    pnl = np.zeros(250)
+    pnl[:13] = -3.0
+    desk = qb.desk_backtest(pnl, np.full(250, 2.0), np.full(250, 1.0))
+    assert desk["exceptions_99"] == 13
+    assert desk["within_limits"] is False
