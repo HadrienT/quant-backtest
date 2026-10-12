@@ -81,7 +81,7 @@ graph TD
   sur des séries de rendements ou de P&L.
 - **B1 ne bloque aucun lot d'ici** : le moteur est testé sur des données
   construites dans les tests. B1 bloque la remise en ligne de la page sur des
-  données réelles.
+  données réelles. Il est livré depuis le 11 octobre 2026 (`data-ingest#14`).
 - **B6 est le lot qui a le plus de valeur** : c'est le seul qui exerce la lib
   de pricing. Il ne dépend que de B2 (la comptabilité) et de B3 (les
   statistiques de l'erreur de couverture).

@@ -1089,15 +1089,17 @@ variance entre essais qu'on lui donne.
 
 ## 17. Données et limites assumées
 
-État de la base au 9 octobre 2026.
+État de la base au 9 octobre 2026, avant le lot B1. Les lignes que B1 a
+changées le 11 octobre 2026 le disent dans leur dernière colonne ; le détail
+des tables est dans `data-ingest#14`.
 
 | Besoin | Ce qu'on a | Ce qui manque | Décision |
 |---|---|---|---|
-| Prix quotidiens | `prices.sp500_daily`, plus haut / plus bas / clôture / volume depuis 2000, 519 titres | prix bruts et événements séparés (§3.3) | lot B1 |
-| Univers historique | la liste d'aujourd'hui | la composition à chaque date, et surtout les cours des titres radiés, qui ne sont pas disponibles gratuitement | Ingérer l'historique des entrées et sorties ; **le biais du survivant ne peut pas être entièrement retiré sans base payante**. La page le dit, et propose par défaut un univers qui n'en souffre pas : fonds indiciels cotés larges et sectoriels |
+| Prix quotidiens | `prices.sp500_daily`, plus haut / plus bas / clôture / volume depuis 2000, 519 titres | prix bruts et événements séparés (§3.3) | **livré par B1** : `prices.raw_daily`, `prices.dividends`, `prices.splits`, 554 titres depuis 2000. `prices.sp500_daily` ne sert pas à un backtest : ses clôtures sont ajustées à la date d'écriture de chaque ligne |
+| Univers historique | la liste d'aujourd'hui | la composition à chaque date, et surtout les cours des titres radiés, qui ne sont pas disponibles gratuitement | Ingérer l'historique des entrées et sorties (**livré par B1** : `prices.sp500_membership`, depuis 1996) ; **le biais du survivant ne peut pas être entièrement retiré sans base payante**. La page le dit, et propose par défaut un univers qui n'en souffre pas : fonds indiciels cotés larges et sectoriels |
 | Taux sans risque historique | `DGS3MO` depuis 1981, `DTB3` depuis 1954, `SOFR` depuis 2018 ; `macro.fred_series` est versionnée, donc déjà point-in-time | rien | lu par l'API et passé au moteur (lot B8) |
-| Indice dividendes réinvestis | `^GSPC` (prix seulement) | l'indice *total return*, ou la clôture ajustée d'un fonds indiciel | lot B1 |
-| Facteurs | rien | Fama-French, momentum | lot B1 |
+| Indice dividendes réinvestis | `^GSPC` (prix seulement) | l'indice *total return*, ou la clôture ajustée d'un fonds indiciel | **livré par B1** : SPY avec ses dividendes, dont le moteur reconstruit le rendement total ; `^SP500TR` est stocké aussi |
+| Facteurs | rien | Fama-French, momentum | **livré par B1** : `factors.french_daily`, versionnée, **en pourcent** |
 | Comptes des sociétés | faits XBRL des 10-K / 10-Q, avec la date de dépôt | rien pour un signal fondamental point-in-time | disponible si un lot futur en a besoin |
 | Surfaces de volatilité historiques | `options.chain_snapshot` : 12 sous-jacents, **14 jours** (depuis le 12 septembre 2026). Yahoo ne donne pas de chaînes passées | de la profondeur ; elle ne s'achète pas gratuitement, elle s'accumule | B6 commence en monde simulé ; la version sur données réelles attend quelques mois d'historique. Ne pas interrompre l'ingestion quotidienne |
 | Volatilité implicite longue | `VIXCLS` depuis 1990 | — | permet dès maintenant une étude de la prime de variance sur l'indice (VIX² contre variance réalisée à 30 jours), en disant que le VIX n'est pas un prix traitable |

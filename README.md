@@ -42,8 +42,8 @@ tested:
   traffic-light zones, the P&L attribution test and the desk-level limits of
   the Basel Framework.
 
-What is left is outside this repository: the data (`data-ingest`) and the
-page (`quant-modeling`). The hedging backtest does not run on historical
+What is left is outside this repository: the page (`quant-modeling`). The
+data it will read are loaded (`data-ingest`). The hedging backtest does not run on historical
 option surfaces yet, and the open issues list what else is not done. The work
 packages are in [`blueprint/README.md`](blueprint/README.md).
 
