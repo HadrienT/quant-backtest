@@ -10,8 +10,9 @@ Il calcule : il reçoit des tableaux et rend des tableaux.
 
 ## État du dépôt
 
-**Tous les lots de ce dépôt sont livrés : B0, B2, B3, B4, B5, B6 et B7.** Il
-reste B1 dans `data-ingest` et B8 dans `quant-modeling`. Modules présents :
+**Tous les lots de ce dépôt sont livrés : B0, B2, B3, B4, B5, B6 et B7.** B1
+est livré dans `data-ingest` ; il ne reste que B8, dans `quant-modeling`
+(issue #166 de ce dépôt-là). Modules présents :
 `core/`, `data/`, `quality/`, `costs/`, `engine/`, `metrics/`, `inference/`,
 `construction/`, `validation/`, `risk_models/`, `hedging/`, et la régression
 factorielle de `attribution/`. Le wheel `quantbacktest` expose :
@@ -56,8 +57,8 @@ Le dépôt a été créé le 11 octobre 2026 à partir du lot 24 du blueprint de
 le sortir du dépôt de pricing. L'ancienne page `/backtest` de `quant-modeling`
 a été masquée le même jour ; son code Python n'est **pas** repris, le moteur
 est réécrit de zéro. Les restes non bloquants des lots sont dans les issues
-ouvertes. Le lot B1 est suivi dans `data-ingest` (issue #14
-de ce dépôt-là). Mettre cette section à jour à chaque lot livré.
+ouvertes. Le lot B1 a été livré dans `data-ingest` le 11 octobre 2026 (issue
+#14 de ce dépôt-là, fermée : elle décrit les tables et leurs conventions). Mettre cette section à jour à chaque lot livré.
 
 ## Par où commencer
 
