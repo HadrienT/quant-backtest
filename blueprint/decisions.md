@@ -300,8 +300,9 @@ trajectoire, donc le même résultat quel que soit le nombre de threads.
 - *Écrire aussi les pricers ici* : c'est précisément ce que ce dépôt ne fait
   pas. Le seul calcul de pricing ajouté est un garde-fou, celui qui suit.
 
-**Garde-fou assumé.** `heston_cos_price` rend des prix faux quand le strike
-sort de son intervalle d'intégration (issue `quant-modeling#168`). Au-delà de
-huit écarts-types du strike, `hedging/` n'appelle pas le pricer et prend la
-valeur intrinsèque, qui est la valeur exacte à la précision machine. À retirer
-quand le défaut est corrigé et le commit épinglé monté.
+**Garde-fou retiré.** Jusqu'au 13 octobre 2026, `hedging/` n'appelait pas
+`heston_cos_price` au-delà de huit écarts-types du strike et prenait la valeur
+intrinsèque, parce que le pricer rendait des prix faux quand le strike sortait
+de son intervalle d'intégration (issue `quant-modeling#168`). Le défaut est
+corrigé dans `quant-modeling` (PR 187) et le commit épinglé monté : le pricer
+est appelé partout, et rend la valeur intrinsèque de lui-même.

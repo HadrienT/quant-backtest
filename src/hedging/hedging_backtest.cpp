@@ -26,9 +26,6 @@ namespace quantBacktest
         // Largest relative strike bump for the derivatives in strike; it is
         // kept small next to the width of the distribution at maturity.
         constexpr Real kStrikeBump = 0.01;
-        // Distance to the strike, in standard deviations of the log return to
-        // maturity, beyond which an option is worth its intrinsic value.
-        constexpr Real kFarFromStrike = 8.0;
         // Below this fraction of the spot, a time value is pricer noise.
         constexpr Real kMinimumTimeValue = 1e-6;
 
@@ -131,17 +128,6 @@ namespace quantBacktest
                 const Real floored = std::max(variance, 0.0);
                 const Real integrated = h.theta * ttm + (floored - h.theta) * -std::expm1(-h.kappa * ttm) / h.kappa;
                 const Real width = std::sqrt(std::max(integrated, 1e-12));
-                // Further than this from the strike the option is worth its
-                // intrinsic value to machine precision, and the cosine series
-                // of the pricer no longer covers the strike (quant-modeling
-                // issue on heston_cos_price): the value is known, the pricer
-                // is not called.
-                if (std::abs(std::log(forward / k)) > kFarFromStrike * width)
-                {
-                    state.price = discount * std::max(option_.is_call ? forward - k : k - forward, 0.0);
-                    state.trueDelta = intrinsicDelta(spot, ttm);
-                    return state;
-                }
                 const Real bump = k * std::clamp(0.1 * width, 1e-4, kStrikeBump);
                 variance = floored;
                 const qm::HestonParams params = hestonParams(world_.heston, variance);

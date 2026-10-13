@@ -39,8 +39,7 @@ d'autre (ADR-010).
 
 Le backtest de couverture tourne en **monde simulé** seulement (Black-Scholes
 ou Heston) ; la version sur surfaces historiques attend des données (issue
-#15). Il contourne un défaut du pricer Heston de `quantModeling` loin du
-strike (ADR-011) : à retirer quand `quant-modeling#168` est corrigée.
+#15).
 
 Le moteur comptable sait vendre à découvert (`allow_short`, avec un taux
 d'emprunt fourni), arrondir aux lots entiers (`whole_shares`) et facturer un

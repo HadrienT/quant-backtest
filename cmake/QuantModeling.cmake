@@ -4,7 +4,7 @@
 # GIT_TAG is a commit SHA, never a branch: the same commit of this repository
 # always builds against the same pricing. Bumping it is a pull request of its
 # own, which reruns the hedging tests (docs/contract.md, section 2).
-set(QB_QUANTMODELING_SHA "fdc1a10433c4a24564e563e64b8fc1829c1f2213")
+set(QB_QUANTMODELING_SHA "c0d3a9c302a352c32a357440594103e0d150012b")
 
 include(FetchContent)
 
