@@ -160,9 +160,7 @@ tests, eux, peuvent utiliser `<random>`.
 
 ## Conventions
 
-- **Conversation avec le mainteneur : en français.** Code, identifiants,
-  commentaires, messages de commit, `README.md` : en anglais. `docs/` et
-  `blueprint/` sont en français.
+- **Language: English by default.** Everything you produce is in English: code, identifiers, comments, commit messages, PRs, issues, documentation and interface text. The only exception is the conversation: reply in the language the maintainer writes in, so in French when they write in French. `docs/` and `blueprint/` are historically in French: new content there is in English too.
 - **Commits : passer par une branche, jamais directement sur `main`** (le
   commit initial de documentation est la seule exception). Terminer les
   messages par la ligne `Co-Authored-By` de la session.
