@@ -1,179 +1,153 @@
-# quant-backtest — notes pour Claude Code
+# quant-backtest — notes for Claude Code
 
-Moteur de backtest en **C++20**, exposé à Python par un wheel pybind11
-`quantbacktest`. Il couvre les quatre sens du mot sur un desk : backtest d'une
-stratégie, d'un modèle et de sa couverture, d'un modèle de risque de marché,
-d'un modèle d'exposition.
+Backtest engine in **C++20**, exposed to Python by a pybind11 wheel `quantbacktest`. It covers the
+four meanings of the word on a desk: backtest of a strategy, of a model and its hedge, of a market
+risk model, of an exposure model.
 
-**Ce dépôt ne contient ni site web, ni accès à une base, ni code de pricing.**
-Il calcule : il reçoit des tableaux et rend des tableaux.
+**This repository contains no website, no database access and no pricing code.** It computes: it
+receives arrays and returns arrays.
 
-## État du dépôt
+## Repository status
 
-**Tous les lots de ce dépôt sont livrés : B0, B2, B3, B4, B5, B6 et B7.** B1
-est livré dans `data-ingest` ; il ne reste que B8, dans `quant-modeling`
-(issue #166 de ce dépôt-là). Modules présents :
-`core/`, `data/`, `quality/`, `costs/`, `engine/`, `metrics/`, `inference/`,
-`construction/`, `validation/`, `risk_models/`, `hedging/`, et la régression
-factorielle de `attribution/`. Le wheel `quantbacktest` expose :
+**All work packages of this repository are delivered: B0, B2, B3, B4, B5, B6 and B7.** B1 is
+delivered in `data-ingest`; only B8 remains, in `quant-modeling` (issue #166 of that repository).
+Modules present: `core/`, `data/`, `quality/`, `costs/`, `engine/`, `metrics/`, `inference/`,
+`construction/`, `validation/`, `risk_models/`, `hedging/`, and the factor regression of
+`attribution/`. The `quantbacktest` wheel exposes:
 
-- `build_info()`, `fingerprint()`, `total_returns()`, `period_rates()` ;
-- `run_allocation()`, le backtest d'une stratégie avec ses points de
-  comparaison, son run brut et son bilan de coûts ;
-- `run_allocation_grid()`, un backtest par configuration, qui rend la table
-  attendue par la validation ;
-- `performance_report()`, `factor_regression()`, `sharpe_difference()`, et
-  deux règles par défaut, `optimal_block_length()` et `newey_west_lag()` ;
-- `walk_forward()`, `combinatorial_purged_cv()`, `deflated_sharpe()`,
-  `backtest_overfitting()`, sur une table de rendements à une colonne par
-  configuration essayée ;
-- `hedging_backtest()`, `fit_minimum_variance_delta()` ;
+- `build_info()`, `fingerprint()`, `total_returns()`, `period_rates()`;
+- `run_allocation()`, the backtest of a strategy with its comparison points, its gross run and its
+  cost breakdown;
+- `run_allocation_grid()`, one backtest per configuration, which returns the table expected by
+  validation;
+- `performance_report()`, `factor_regression()`, `sharpe_difference()`, and two default rules,
+  `optimal_block_length()` and `newey_west_lag()`;
+- `walk_forward()`, `combinatorial_purged_cv()`, `deflated_sharpe()`, `backtest_overfitting()`, on a
+  table of returns with one column per configuration tried;
+- `hedging_backtest()`, `fit_minimum_variance_delta()`;
 - `var_backtest()`, `pla_test()`, `desk_backtest()`.
 
-Leur forme est au §5 de [`docs/contract.md`](docs/contract.md). Une stratégie
-est du C++ : le wheel n'accepte pas de poids calculés côté Python, qui
-contourneraient le point-in-time.
+Their shape is in §5 of [`docs/contract.md`](docs/contract.md). A strategy is C++: the wheel does not
+accept weights computed on the Python side, which would bypass point-in-time.
 
-Contraintes d'optimisation disponibles : bornes par titre et budget, rien
-d'autre (ADR-010).
+Available optimization constraints: per-asset bounds and budget, nothing else (ADR-010).
 
-Le backtest de couverture tourne en **monde simulé** seulement (Black-Scholes
-ou Heston) ; la version sur surfaces historiques attend des données (issue
-#15). Il contourne un défaut du pricer Heston de `quantModeling` loin du
-strike (ADR-011) : à retirer quand `quant-modeling#168` est corrigée.
+The hedging backtest runs in a **simulated world** only (Black-Scholes or Heston); the version on
+historical surfaces awaits data (issue #15). It works around a defect of the `quantModeling` Heston
+pricer far from the strike (ADR-011): to be removed when `quant-modeling#168` is fixed.
 
-Le moteur comptable sait vendre à découvert (`allow_short`, avec un taux
-d'emprunt fourni), arrondir aux lots entiers (`whole_shares`) et facturer un
-impact de marché en racine carrée. Ce qu'il **ne fait pas** encore (issue #9) :
-le rendement de radiation d'un titre qui cesse de coter (la position reste à
-son dernier cours, signalée dans le rapport de qualité), faute de données.
+The accounting engine can sell short (`allow_short`, with a provided borrow rate), round to whole
+lots (`whole_shares`) and charge a square-root market impact. What it does **not** do yet (issue #9):
+the delisting return of an asset that stops trading (the position stays at its last price, flagged in
+the quality report), for lack of data.
 
-À savoir avant d'utiliser le coût d'écart estimé : sur des titres liquides les
-estimateurs de Corwin-Schultz et d'Abdi-Ranaldo surestiment l'écart d'un ordre
-de grandeur (§5.1 du compagnon).
+To know before using the estimated spread cost: on liquid assets the Corwin-Schultz and Abdi-Ranaldo
+estimators overestimate the spread by an order of magnitude (§5.1 of the companion).
 
-Le dépôt a été créé le 11 octobre 2026 à partir du lot 24 du blueprint de
-`quant-modeling`, quand le mainteneur a décidé d'écrire le moteur en C++ et de
-le sortir du dépôt de pricing. L'ancienne page `/backtest` de `quant-modeling`
-a été masquée le même jour ; son code Python n'est **pas** repris, le moteur
-est réécrit de zéro. Les restes non bloquants des lots sont dans les issues
-ouvertes. Le lot B1 a été livré dans `data-ingest` le 11 octobre 2026 (issue
-#14 de ce dépôt-là, fermée : elle décrit les tables et leurs conventions). Mettre cette section à jour à chaque lot livré.
+The repository was created on October 11, 2026 from work package 24 of the `quant-modeling`
+blueprint, when the maintainer decided to write the engine in C++ and move it out of the pricing
+repository. The old `/backtest` page of `quant-modeling` was hidden the same day; its Python code is
+**not** reused, the engine is rewritten from scratch. Non-blocking leftovers of the work packages are
+in the open issues. Work package B1 was delivered in `data-ingest` on October 11, 2026 (issue #14 of
+that repository, closed: it describes the tables and their conventions). Update this section with
+each delivered work package.
 
-## Par où commencer
+## Where to start
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| [`docs/companion.md`](docs/companion.md) | Compagnon de lecture **et** spécification : la pratique d'un desk (§1 à §13), les quinze constats sur l'ancienne page (§2), l'architecture (§14), les lots (§15), les tests de propriété (§16), l'état des données (§17), la bibliographie (§19) |
-| [`docs/contract.md`](docs/contract.md) | Frontière avec `quant-modeling` : qui possède quoi, forme de l'interface, épinglage des versions |
-| [`blueprint/README.md`](blueprint/README.md) | Les lots et leur graphe de dépendances : le consulter avant de démarrer un lot |
-| [`blueprint/decisions.md`](blueprint/decisions.md) | Décisions d'architecture, avec les alternatives écartées |
+| [`docs/companion.md`](docs/companion.md) | Reading companion **and** specification: desk practice (§1 to §13), the fifteen findings on the old page (§2), the architecture (§14), the work packages (§15), the property tests (§16), the state of the data (§17), the bibliography (§19) |
+| [`docs/contract.md`](docs/contract.md) | Boundary with `quant-modeling`: who owns what, shape of the interface, version pinning |
+| [`blueprint/README.md`](blueprint/README.md) | The work packages and their dependency graph: consult it before starting a work package |
+| [`blueprint/decisions.md`](blueprint/decisions.md) | Architecture decisions, with the alternatives rejected |
 
-## Relation avec les autres dépôts
+## Relationship with the other repositories
 
-| Dépôt | Rôle vis-à-vis d'ici |
+| Repository | Role relative to this one |
 |---|---|
-| `~/quant-modeling` | **Dépendance C++** : la lib `quantModeling` (pricers, grecques, calibrations), tirée à un commit épinglé, pour le seul module `hedging/`. **Consommateur** : son API importe le wheel `quantbacktest`. Il porte le routeur FastAPI, la lecture en base, l'événement d'audit, le replay et la page `/backtest` |
-| `~/data-ingest` | Ingestion des données de marché dans Postgres. Le lot B1 (prix bruts, événements, composition historique, facteurs) se fait là-bas |
-| `~/quant-platform` | Kafka, base d'audit, observabilité. Ce dépôt n'y émet rien : c'est l'API de `quant-modeling` qui émet |
+| `~/quant-modeling` | **C++ dependency**: the `quantModeling` library (pricers, greeks, calibrations), pulled at a pinned commit, for the `hedging/` module only. **Consumer**: its API imports the `quantbacktest` wheel. It holds the FastAPI router, the database reads, the audit event, the replay and the `/backtest` page |
+| `~/data-ingest` | Market data ingestion into Postgres. Work package B1 (raw prices, events, historical membership, factors) is done there |
+| `~/quant-platform` | Kafka, audit database, observability. This repository emits nothing there: the `quant-modeling` API does |
 
-Règles de frontière :
+Boundary rules:
 
-- **Ne jamais éditer un dépôt voisin depuis une session ouverte ici.** Un
-  changement qui touche deux dépôts = une issue dans chacun, référencées l'une
-  par l'autre, et deux PR coordonnées.
-- **La dépendance ne va que dans un sens.** Ce dépôt connaît `quantModeling` ;
-  rien dans `quant-modeling/include` ou `src` ne doit connaître ce dépôt.
-- **Le contrat** est canonique ici ([`docs/contract.md`](docs/contract.md)) ;
-  le modifier est un ADR.
+- **Never edit a neighboring repository from a session opened here.** A change touching two
+  repositories means one issue in each, referencing each other, and two coordinated PRs.
+- **The dependency goes one way only.** This repository knows `quantModeling`; nothing in
+  `quant-modeling/include` or `src` may know this repository.
+- **The contract** is canonical here ([`docs/contract.md`](docs/contract.md)); changing it is an ADR.
 
-## Principes d'architecture non négociables
+## Non-negotiable architecture principles
 
-1. **Le moteur ne lit aucune base, aucun fichier, aucun réseau.** Le SQL est
-   dans `quant-modeling`, l'ingestion dans `data-ingest`. Pas de Yahoo Finance,
-   nulle part.
-2. **Point-in-time par construction** : à la date $t$, le moteur ne donne à la
-   stratégie que ce qui était connu en $t$. Le test « pas de futur » du §16
-   s'applique à tout nouveau chemin de données.
-3. **Jamais d'interpolation ni de repli.** Une donnée absente est un jour non
-   traitable ou une erreur explicite.
-4. **Le livre est en titres et en espèces**, pas en poids. Chaque ordre laisse
-   une ligne dans le journal.
-5. **La stratégie est séparée du moteur** : le moteur ne branche sur aucune
-   stratégie, comme un engine de `quantModeling` ne branche sur aucun produit.
-6. **Seul `hedging/` inclut `quantModeling`.** Les autres modules se
-   construisent et se testent sans lui.
-7. **L'interface Python ne porte que des données simples** (tableaux numpy,
-   nombres, chaînes, dictionnaires). Aucun objet du wheel `quantmodeling` ne
-   traverse.
-8. **Déterminisme** : mêmes entrées et même graine, mêmes sorties au bit près,
-   quel que soit le nombre de threads.
-9. **Chaque chiffre rendu porte sa convention et son incertitude.** Une
-   métrique qu'on ne sait pas encadrer n'est pas rendue.
-10. **Rester près des sources** : noms, formules et conventions de signe sont
-    ceux des références du §19 ; la référence est citée dans le commentaire de
-    la fonction. Les seuils réglementaires du §12 sont revérifiés contre le
-    texte primaire avant d'être codés.
+1. **The engine reads no database, no file, no network.** SQL is in `quant-modeling`, ingestion in
+   `data-ingest`. No Yahoo Finance, anywhere.
+2. **Point-in-time by construction**: at date $t$, the engine gives the strategy only what was known
+   at $t$. The "no future" test of §16 applies to any new data path.
+3. **Never interpolation or fallback.** Missing data is a non-tradable day or an explicit error.
+4. **The book is in shares and cash**, not in weights. Each order leaves a line in the journal.
+5. **The strategy is separate from the engine**: the engine does not branch on any strategy, just as
+   a `quantModeling` engine does not branch on any product.
+6. **Only `hedging/` includes `quantModeling`.** The other modules build and test without it.
+7. **The Python interface carries only simple data** (numpy arrays, numbers, strings, dictionaries).
+   No object of the `quantmodeling` wheel crosses it.
+8. **Determinism**: same inputs and same seed, same outputs bit for bit, whatever the number of
+   threads.
+9. **Every figure returned carries its convention and its uncertainty.** A metric that cannot be
+   bounded is not returned.
+10. **Stay close to the sources**: names, formulas and sign conventions are those of the references of
+    §19; the reference is cited in the function's comment. The regulatory thresholds of §12 are
+    rechecked against the primary text before being coded.
 
-## Commandes
+## Commands
 
-`VCPKG_ROOT` doit pointer sur un clone de vcpkg ; les dépendances sont
-installées par le manifeste [`vcpkg.json`](vcpkg.json) à la configuration.
+`VCPKG_ROOT` must point to a vcpkg clone; dependencies are installed by the
+[`vcpkg.json`](vcpkg.json) manifest at configure time.
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| `scripts/make.sh` | Configure (preset `default`), construit dans `build/`, lance tous les tests |
-| `scripts/make_asan.sh` | Idem avec ASan et UBSan, dans `build-asan/` |
-| `cmake --preset default && cmake --build build` | Construire sans lancer les tests |
-| `ctest --test-dir build --output-on-failure` | Tous les tests |
-| `ctest --test-dir build -LE hedging` | Les tests qui n'ont pas besoin de `quantModeling` |
-| `ctest --test-dir build -R BuildInfo` | Les tests dont le nom contient un motif |
-| `cmake --preset no-hedging && cmake --build build-no-hedging` | Construire sans `quantModeling` (principe 6) : la boucle courte pour tout sauf `hedging/` |
-| `scripts/bench.sh` | Construit (preset `bench`, dans `build-bench/`) et lance le benchmark ; les arguments vont à google-benchmark, par exemple `--benchmark_filter=Monthly` |
-| `scripts/build_wheel.sh` | Wheel `quantbacktest` dans `dist/` |
-| `pytest` | Tests Python, sur le wheel installé dans l'environnement courant (`pip install dist/*.whl pytest`) |
-| `pre-commit run --all-files` | `clang-format` 18 et `black` |
+| `scripts/make.sh` | Configures (preset `default`), builds into `build/`, runs all tests |
+| `scripts/make_asan.sh` | Same with ASan and UBSan, into `build-asan/` |
+| `cmake --preset default && cmake --build build` | Build without running the tests |
+| `ctest --test-dir build --output-on-failure` | All tests |
+| `ctest --test-dir build -LE hedging` | Tests that do not need `quantModeling` |
+| `ctest --test-dir build -R BuildInfo` | Tests whose name contains a pattern |
+| `cmake --preset no-hedging && cmake --build build-no-hedging` | Build without `quantModeling` (principle 6): the short loop for everything except `hedging/` |
+| `scripts/bench.sh` | Builds (preset `bench`, into `build-bench/`) and runs the benchmark; arguments go to google-benchmark, for example `--benchmark_filter=Monthly` |
+| `scripts/build_wheel.sh` | `quantbacktest` wheel in `dist/` |
+| `pytest` | Python tests, on the wheel installed in the current environment (`pip install dist/*.whl pytest`) |
+| `pre-commit run --all-files` | `clang-format` 18 and `black` |
 
-Cibles CMake : `quantBacktest` (tout sauf la couverture, ne lie pas
-`quantModeling`), `quantBacktest_hedging` (la seule qui le lie),
-`quantBacktest_tests`, `quantBacktest_hedging_tests` et `quantBacktest_bench`.
-Un fichier source ou un test nouveau s'ajoute à la main dans la liste de sa
-cible. Les tests construisent leurs données avec
-[`tests/support/synthetic_market.hpp`](tests/support/synthetic_market.hpp).
-Tout tirage aléatoire de la lib passe par `core/random.hpp` (ADR-009) ; les
-tests, eux, peuvent utiliser `<random>`.
+CMake targets: `quantBacktest` (everything except hedging, does not link `quantModeling`),
+`quantBacktest_hedging` (the only one that links it), `quantBacktest_tests`,
+`quantBacktest_hedging_tests` and `quantBacktest_bench`. A new source file or test is added by hand to
+its target's list. Tests build their data with
+[`tests/support/synthetic_market.hpp`](tests/support/synthetic_market.hpp). All random draws in the
+library go through `core/random.hpp` (ADR-009); tests may use `<random>`.
 
-**Monter la version de `quantModeling`** : changer `QB_QUANTMODELING_SHA` dans
-`cmake/QuantModeling.cmake` (un SHA de commit, jamais une branche), dans une PR
-à part.
+**Bumping the `quantModeling` version**: change `QB_QUANTMODELING_SHA` in
+`cmake/QuantModeling.cmake` (a commit SHA, never a branch), in a separate PR.
 
-## Suivi du travail — GitHub Issues
+## Tracking work: GitHub Issues
 
-`gh` est authentifié (compte `HadrienT`).
+`gh` is authenticated (account `HadrienT`).
 
-- **Au démarrage d'une session** : `gh issue list --state open`.
-- **Issue traitée** → `gh issue close <n> --comment "fait dans <sha>"`.
-- **Jamais** de fichier markdown de passation entre sessions. Une tâche qui
-  survit à la session est une issue.
-- La conception vit dans `docs/` et `blueprint/` ; l'issue y renvoie, elle ne
-  la remplace pas.
+- **At the start of a session**: `gh issue list --state open`.
+- **Issue handled** → `gh issue close <n> --comment "done in <sha>"`.
+- **Never** a markdown handoff file between sessions. A task that outlives the session is an issue.
+- Design lives in `docs/` and `blueprint/`; the issue points to it, it does not replace it.
 
 ## Conventions
 
 - **Language: English by default.** Everything you produce is in English: code, identifiers, comments, commit messages, PRs, issues, documentation and interface text. The only exception is the conversation: reply in the language the maintainer writes in, so in French when they write in French. `docs/` and `blueprint/` are historically in French: new content there is in English too.
-- **Commits : passer par une branche, jamais directement sur `main`** (le
-  commit initial de documentation est la seule exception). Terminer les
-  messages par la ligne `Co-Authored-By` de la session.
-- **C++** : `clang-format --style=file`, **version 18** ; le `.clang-format`
-  est celui de `quant-modeling`. **Python** : `black`. Le hook pre-commit est à
-  installer sur chaque clone : `pre-commit install -t pre-commit`.
-- **Propriété mémoire** : préférer `unique_ptr` et des références non
-  propriétaires.
-- **Tout module arrive avec son test**, et de préférence un test de
-  *propriété* (conservation, pas de futur, invariance aux divisions, taille
-  empirique d'un test statistique) plutôt qu'une égalité numérique. La liste
-  est au §16 du compagnon.
-- **Gestion des dépendances déclarative** : tout passe par `vcpkg.json` et les
-  presets CMake ; un clone neuf se construit sans étape manuelle.
-- **Pas de produit nouveau.** Ce chantier n'ajoute aucun payoff au catalogue de
-  `quant-modeling`.
+- **Commits: go through a branch, never directly on `main`** (the initial documentation commit is the
+  only exception). End messages with the session's `Co-Authored-By` line.
+- **C++**: `clang-format --style=file`, **version 18**; the `.clang-format` is that of
+  `quant-modeling`. **Python**: `black`. The pre-commit hook must be installed on each clone:
+  `pre-commit install -t pre-commit`.
+- **Memory ownership**: prefer `unique_ptr` and non-owning references.
+- **Every module comes with its test**, preferably a *property* test (conservation, no future,
+  invariance to splits, empirical size of a statistical test) rather than a numeric equality. The list
+  is in §16 of the companion.
+- **Declarative dependency management**: everything goes through `vcpkg.json` and the CMake presets; a
+  fresh clone builds with no manual step.
+- **No new product.** This project adds no payoff to the `quant-modeling` catalogue.
