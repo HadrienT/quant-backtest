@@ -13,8 +13,7 @@ It covers the four things a desk calls "backtest":
 | A **market risk model** (VaR, ES) | Do realised losses match the announced ones, in number and in clustering? |
 | An **exposure model** | Do realised values fall where the simulated distribution said? |
 
-**Status: every work package of this repository is delivered.** Written and
-tested:
+## What is built
 
 - the event-driven engine: a book in shares and cash, dividends and splits
   applied from raw prices, a declared signal-to-execution timeline, an order
@@ -42,10 +41,9 @@ tested:
   traffic-light zones, the P&L attribution test and the desk-level limits of
   the Basel Framework.
 
-What is left is outside this repository: the page (`quant-modeling`). The
-data it will read are loaded (`data-ingest`). The hedging backtest does not run on historical
-option surfaces yet, and the open issues list what else is not done. The work
-packages are in [`blueprint/README.md`](blueprint/README.md).
+Known gaps: the hedging backtest does not run on historical option surfaces
+yet, and the [open issues](https://github.com/HadrienT/quant-backtest/issues)
+list what else is not done.
 
 ## Where it sits
 
@@ -71,7 +69,6 @@ arrays. The boundary with `quant-modeling` is written down in
 | [`docs/contract.md`](docs/contract.md) | Who owns what between this repository and `quant-modeling` |
 | [`blueprint/README.md`](blueprint/README.md) | Work packages and their dependency graph |
 | [`blueprint/decisions.md`](blueprint/decisions.md) | Architecture decisions, with the alternatives rejected |
-| [`CLAUDE.md`](CLAUDE.md) | Working notes for Claude Code sessions |
 
 ## Build
 
