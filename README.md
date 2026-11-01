@@ -4,6 +4,8 @@ A backtesting engine in C++20, built the way a quant desk does it: point-in-time
 data, a book kept in shares and cash, explicit transaction costs, and an
 uncertainty on every figure it reports.
 
+**[How it works: interactive map](https://hadrient.github.io/atlas-pages/quant-backtest/)**
+
 It covers the four things a desk calls "backtest":
 
 | What is tested | What it answers |
